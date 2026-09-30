@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for Claude Code when working in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project
 
@@ -30,6 +30,8 @@ Astro 331 Lab 8/                 <- git root (README, CLAUDE.md, lab slides)
     └── test/                    <- PlatformIO unit tests
 ```
 
+**Status:** `src/main.cpp` is still the unmodified PlatformIO template and no sensors, motor drivers, or libraries have been chosen yet — there is no architecture to infer from code. Ask the user for the IMU, magnetometer, and reaction-wheel driver part numbers before adding drivers, and update this file once they exist.
+
 Target hardware: **Teensy 4.1** (ARM Cortex-M7, 600 MHz, hardware FPU — `float` math is cheap; prefer `float` over `double`).
 
 ## Build / upload / monitor
@@ -47,7 +49,6 @@ Always quote paths — the directory names contain spaces.
 
 ## Conventions
 
-- Add library dependencies via `lib_deps` in `platformio.ini` rather than vendoring, unless the library needs local modification (then put it in `lib/`).
 - Keep the control loop non-blocking: no `delay()` in `loop()`; use `micros()`/`elapsedMicros` timing so the sensor-fusion and control rates are deterministic.
 - Keep sensor drivers, attitude estimation, control law, and wheel fault detection in separate modules so each can be tested independently.
 - Angles in code are radians unless a name says otherwise (e.g. `yawDeg`); document frame conventions (body vs. reference) where quaternions/rotations are defined.
