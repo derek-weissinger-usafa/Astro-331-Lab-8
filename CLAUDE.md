@@ -30,9 +30,19 @@ Astro 331 Lab 8/                 <- git root (README, CLAUDE.md, lab slides)
     └── test/                    <- PlatformIO unit tests
 ```
 
-**Status:** `src/main.cpp` is still the unmodified PlatformIO template and no sensors, motor drivers, or libraries have been chosen yet — there is no architecture to infer from code. Ask the user for the IMU, magnetometer, and reaction-wheel driver part numbers before adding drivers, and update this file once they exist.
+**Status:** `src/main.cpp` is still the unmodified PlatformIO template, so there is no code architecture to infer yet. Update this file as firmware modules are added.
 
-Target hardware: **Teensy 4.1** (ARM Cortex-M7, 600 MHz, hardware FPU — `float` math is cheap; prefer `float` over `double`).
+## Hardware
+
+- MCU: **Teensy 4.1** (Cortex-M7, 600 MHz, hardware FPU — `float` math is cheap; prefer `float` over `double`)
+- IMU: **Adafruit BNO085** 9-DoF over STEMMA QT (I2C); does on-chip fusion and can output quaternions
+- Wireless: **SparkFun XBee** dongle (XBee radio over serial)
+- Actuators: 4 reaction wheels, each a **Pololu 10:1 Metal Gearmotor 37D 12 V** (brushed DC)
+- Motor drivers: 4× **Pololu TB9051FTG**, two PWM pins each (from past docs; not yet re-verified on the hardware)
+
+## Past Documentation
+
+`Past Documentation/` holds a prior student's work on this table: a paper (`Air Bearing Table Sphere/Dissertation End of Studies Internship.docx`), CAD, and MATLAB/Simulink models (dynamics, motor characterization, linearized saturating-wheel analysis). **Its hardware is outdated** — it used an Arduino MKR 1000 WiFi, ICM-20948 + MPU-6050 IMUs, and Simulink over Wi-Fi. Use it for dynamics, inertia, and motor-characterization reference only; `Gemini Hardware Diagram/old_wiring_diagram.svg` is a rough older wiring layout.
 
 ## Build / upload / monitor
 
