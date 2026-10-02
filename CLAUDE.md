@@ -55,13 +55,15 @@ Transcribed from the team's hand-labeled wiring sheet, `teensy_pin_out.pdf` (rep
 |---|---|---|
 | 34 (RX8) | white | XBee — use `Serial8` |
 | 35 (TX8) | blue | XBee |
+| 18 (SDA) | blue | BNO085 SDA — use `Wire`, default address 0x4A |
+| 19 (SCL) | yellow | BNO085 SCL |
 | VIN / GND / 3.3V | red / green / — | power (handwritten labels partly illegible; check the sheet) |
 | 12 | — | marked empty |
 
 Notes:
 - Which of the orange/blue wires is the driver's PWM1 vs. PWM2 is not recorded — confirm wheel spin direction on the bench.
 - Yellow/white match Pololu's encoder A/B lead colors. Encoder pins aren't all hardware-quadrature (XBAR) capable; use the interrupt-based `Encoder` library (every Teensy 4.1 digital pin has interrupts).
-- The sheet doesn't list the BNO085; it is presumably on `Wire` (SDA 18, SCL 19), default address 0x4A — verify. TB9051FTG OCM/DIAG (useful for wheel-fault detection) aren't wired yet.
+- BNO085 wiring isn't on the sheet; it was confirmed by the team (STEMMA QT colors: blue = SDA, yellow = SCL). TB9051FTG OCM/DIAG (useful for wheel-fault detection) aren't wired yet.
 
 ## Past Documentation
 
