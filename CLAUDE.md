@@ -30,7 +30,13 @@ Astro 331 Lab 8/                 <- git root (README, CLAUDE.md, lab slides)
     └── test/                    <- PlatformIO unit tests
 ```
 
-**Status:** `src/main.cpp` is still the unmodified PlatformIO template, so there is no code architecture to infer yet. Update this file as firmware modules are added.
+**Status:** Attitude determination is implemented (build-verified, not yet run on hardware). Everything lives in the PlatformIO project folder:
+- `include/frames.h` — frame/sign conventions (body z up, right-handed; x=roll, y=pitch, z=yaw; q is inertial→body, Hamilton, scalar-first). Read this before touching estimator or control math.
+- `include/quat_math.h` — header-only quaternion + fixed-size `Mat<R,C>` helpers.
+- `src/attitude_ekf.cpp` — multiplicative EKF (6-state error: attitude + gyro bias). Gyro propagates; **accelerometer-only** update with magnitude gating. **No magnetometer by design** (motor interference), so yaw is dead-reckoned, relative to power-on, and drifts at the residual gyro-z bias; its σ grows all run.
+- `src/imu_bno085.cpp` — Adafruit BNO08x wrapper; enables only uncalibrated gyro (200 Hz) + accelerometer (100 Hz).
+- `src/main.cpp` — startup: hold table still ~3 s (gyro bias + initial tilt), then run and stream CSV telemetry at 20 Hz.
+- `include/pins.h` — placeholder pins/I2C address (TODO until wiring is confirmed). EKF noise values in `EkfParams` are placeholders to tune from a stationary log.
 
 ## Hardware
 
