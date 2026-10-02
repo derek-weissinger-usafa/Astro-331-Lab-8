@@ -57,7 +57,7 @@ Transcribed from the team's hand-labeled wiring sheet, `teensy_pin_out.pdf` (rep
 | 35 (TX8) | blue | XBee |
 | 18 (SDA) | blue | BNO085 SDA — use `Wire`, default address 0x4A |
 | 19 (SCL) | yellow | BNO085 SCL |
-| VIN / GND / 3.3V | red / green / — | power (handwritten labels partly illegible; check the sheet) |
+| VIN / GND / 3.3V | red / green / — | power |
 | 12 | — | marked empty |
 
 Notes:
