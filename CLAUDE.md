@@ -40,6 +40,29 @@ Astro 331 Lab 8/                 <- git root (README, CLAUDE.md, lab slides)
 - Actuators: 4 reaction wheels, each a **Pololu 10:1 Metal Gearmotor 37D 12 V** (brushed DC)
 - Motor drivers: 4× **Pololu TB9051FTG**, two PWM pins each (from past docs; not yet re-verified on the hardware)
 
+### Teensy pin assignments
+
+Transcribed from the team's hand-labeled wiring sheet, `teensy_pin_out.pdf` (repo root). Wheels are labeled **A–D**; wire colors are the physical wire colors at the Teensy.
+
+| Wheel | PWM (orange) | PWM (blue) | Encoder ch. A (yellow) | Encoder ch. B (white) |
+|---|---|---|---|---|
+| A | 22 | 23 | 8 | 4 |
+| B | 14 | 15 | 9 | 5 |
+| C | 36 | 37 | 10 | 6 |
+| D | 24 | 25 | 11 | 7 |
+
+| Pin | Wire | Connects to |
+|---|---|---|
+| 34 (RX8) | white | XBee — use `Serial8` |
+| 35 (TX8) | blue | XBee |
+| VIN / GND / 3.3V | red / green / — | power (handwritten labels partly illegible; check the sheet) |
+| 12 | — | marked empty |
+
+Notes:
+- Which of the orange/blue wires is the driver's PWM1 vs. PWM2 is not recorded — confirm wheel spin direction on the bench.
+- Yellow/white match Pololu's encoder A/B lead colors. Encoder pins aren't all hardware-quadrature (XBAR) capable; use the interrupt-based `Encoder` library (every Teensy 4.1 digital pin has interrupts).
+- The sheet doesn't list the BNO085; it is presumably on `Wire` (SDA 18, SCL 19), default address 0x4A — verify. TB9051FTG OCM/DIAG (useful for wheel-fault detection) aren't wired yet.
+
 ## Past Documentation
 
 `Past Documentation/` holds a prior student's work on this table: a paper (`Air Bearing Table Sphere/Dissertation End of Studies Internship.docx`), CAD, and MATLAB/Simulink models (dynamics, motor characterization, linearized saturating-wheel analysis). **Its hardware is outdated** — it used an Arduino MKR 1000 WiFi, ICM-20948 + MPU-6050 IMUs, and Simulink over Wi-Fi. Use it for dynamics, inertia, and motor-characterization reference only; `Gemini Hardware Diagram/old_wiring_diagram.svg` is a rough older wiring layout.
