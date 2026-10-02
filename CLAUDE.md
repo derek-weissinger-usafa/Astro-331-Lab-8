@@ -36,7 +36,7 @@ Astro 331 Lab 8/                 <- git root (README, CLAUDE.md, lab slides)
 - `src/attitude_ekf.cpp` — multiplicative EKF (6-state error: attitude + gyro bias). Gyro propagates; **accelerometer-only** update with magnitude gating. **No magnetometer by design** (motor interference), so yaw is dead-reckoned, relative to power-on, and drifts at the residual gyro-z bias; its σ grows all run.
 - `src/imu_bno085.cpp` — Adafruit BNO08x wrapper; enables only uncalibrated gyro (200 Hz) + accelerometer (100 Hz).
 - `src/main.cpp` — startup: hold table still ~3 s (gyro bias + initial tilt), then run and stream CSV telemetry at 20 Hz.
-- `include/pins.h` — placeholder pins/I2C address (TODO until wiring is confirmed). EKF noise values in `EkfParams` are placeholders to tune from a stationary log.
+- `include/pins.h` — confirmed Teensy pin assignments (IMU, XBee, wheel PWM, encoders); see "Teensy pin assignments" below. EKF noise values in `EkfParams` are placeholders to tune from a stationary log.
 
 ## Hardware
 
@@ -59,17 +59,22 @@ Transcribed from the team's hand-labeled wiring sheet, `teensy_pin_out.pdf` (rep
 
 | Pin | Wire | Connects to |
 |---|---|---|
-| 34 (RX8) | white | XBee — use `Serial8` |
-| 35 (TX8) | blue | XBee |
+| 34 (RX8) | white | XBee TX (DOUT) — use `Serial8` |
+| 35 (TX8) | blue | XBee RX (DIN) |
 | 18 (SDA) | blue | BNO085 SDA — use `Wire`, default address 0x4A |
 | 19 (SCL) | yellow | BNO085 SCL |
 | VIN / GND / 3.3V | red / green / — | power |
 | 12 | — | marked empty |
 
+### Board-side wiring (confirmed by the team)
+
+- **TB9051FTG (×4):** Teensy orange → PWM1, blue → PWM2. OUT1/OUT2 → motor red/black. EN tied high, ENB tied low (always enabled). Short orange wire = power to both VIN and VCC; yellow = GND. Driver power comes from the **Teensy's VIN pin** (5 V rail), so motors run at ~5 V, not their rated 12 V, and motor current shares the Teensy's supply. OCM, DIAG, OCC are not connected (OCC defaults low).
+- **Gearmotor encoders (×4):** blue (Vcc) → 5 V, green → GND; yellow (A) / white (B) → Teensy pins above. **The A/B outputs swing 0–5 V and the Teensy is not 5 V tolerant** — these lines need level shifting/dividers (or the encoders moved to a lower supply) before running the motors.
+- **BNO085:** STEMMA QT red → Teensy 3.3 V, black → GND. I2C only; INT and RST not connected.
+- **XBee (table side):** VCC → Teensy 3.3 V, GND → GND.
+
 Notes:
-- Which of the orange/blue wires is the driver's PWM1 vs. PWM2 is not recorded — confirm wheel spin direction on the bench.
 - Yellow/white match Pololu's encoder A/B lead colors. Encoder pins aren't all hardware-quadrature (XBAR) capable; use the interrupt-based `Encoder` library (every Teensy 4.1 digital pin has interrupts).
-- BNO085 wiring isn't on the sheet; it was confirmed by the team (STEMMA QT colors: blue = SDA, yellow = SCL). TB9051FTG OCM/DIAG (useful for wheel-fault detection) aren't wired yet.
 
 ## Past Documentation
 
