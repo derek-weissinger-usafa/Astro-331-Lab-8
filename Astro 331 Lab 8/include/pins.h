@@ -22,6 +22,6 @@ constexpr int kPinWheelPwm2[kNumWheels] = {23, 15, 37, 25};  // blue wire   -> d
 
 // Wheel encoders (Pololu 64 CPR at motor shaft, 640 CPR at output). Not all are XBAR
 // quadrature-capable, so use the interrupt-based Encoder library.
-// WARNING: encoders are powered from 5 V, so A/B swing to 5 V; level-shift before connecting.
+// Encoders are powered from 3.3 V (below Pololu's 3.5 V spec minimum), so A/B are 3.3 V logic.
 constexpr int kPinWheelEncA[kNumWheels] = {8, 9, 10, 11};  // yellow
 constexpr int kPinWheelEncB[kNumWheels] = {4, 5, 6, 7};    // white

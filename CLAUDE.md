@@ -69,7 +69,7 @@ Transcribed from the team's hand-labeled wiring sheet, `teensy_pin_out.pdf` (rep
 ### Board-side wiring (confirmed by the team)
 
 - **TB9051FTG (×4):** Teensy orange → PWM1, blue → PWM2. OUT1/OUT2 → motor red/black. EN tied high, ENB tied low (always enabled). Short orange wire = power to both VIN and VCC; yellow = GND. Driver power comes from the **Teensy's VIN pin** (5 V rail), so motors run at ~5 V, not their rated 12 V, and motor current shares the Teensy's supply. OCM, DIAG, OCC are not connected (OCC defaults low).
-- **Gearmotor encoders (×4):** blue (Vcc) → 5 V, green → GND; yellow (A) / white (B) → Teensy pins above. **The A/B outputs swing 0–5 V and the Teensy is not 5 V tolerant** — these lines need level shifting/dividers (or the encoders moved to a lower supply) before running the motors.
+- **Gearmotor encoders (×4):** blue (Vcc) → Teensy 3.3 V, green → GND; yellow (A) / white (B) → Teensy pins above. A/B swing 0–3.3 V, so they're safe for the Teensy with no level shifting. 3.3 V is just below Pololu's 3.5 V minimum encoder supply — if counts are missed or noisy, suspect this first.
 - **BNO085:** STEMMA QT red → Teensy 3.3 V, black → GND. I2C only; INT and RST not connected.
 - **XBee (table side):** VCC → Teensy 3.3 V, GND → GND.
 
