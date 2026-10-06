@@ -15,6 +15,11 @@
 //   dtheta_dot = -[w_hat]x dtheta + dbias - n_g
 //   dbias_dot  = n_b
 // Accelerometer measurement (unit vector): y = A(q)*ez  =>  H = [ -[y_hat]x , 0 ]
+//
+// FUTURE (gated magnetometer, only if measured yaw drift is too large): add updateMag()
+// with the same unit-vector update as updateAccel (v_ref = local field direction), apply it
+// only when the wheels are quiet and the field magnitude is consistent. The uncalibrated
+// magnetometer is already read (for the data log) in imu_bno085.cpp. Not fused now.
 
 struct EkfParams {
   // TODO: placeholders. Tune from a logged stationary run on the table.
