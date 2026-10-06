@@ -95,7 +95,7 @@ All pack negatives, boost GND, driver GNDs, Teensy GND ── common ground (nev
 ```
 
 - **Before connecting any pack:** split each driver's VIN from VCC (the short orange wire ties them today — left tied, 12 V reaches VCC and back-feeds the Teensy VIN), and cut the Teensy's VIN–VUSB trace so the boost doesn't back-feed USB.
-- The PKCELL's 3.0–4.2 V is too low to feed Teensy VIN directly for a steady 3.3 V rail, so it must be **boosted** to 5 V (a buck won't work). Logic load ≈ 0.25 A at 5 V ≈ 0.4 A from the pack, well inside the 2 A lead; runtime ≈ a day.
+- Teensy 4.1 VIN accepts **3.6–5.5 V** (PJRC). The PKCELL spans 3.0–4.2 V, so it's in spec when charged but drops below 3.6 V for the end of its discharge. Either boost it to 5 V (a buck won't work), or wire it straight to VIN and end runs once the pack reaches ~3.7 V. Logic load ≈ 0.25 A at 5 V ≈ 0.4 A from the pack, well inside the 2 A lead; runtime ≈ a day.
 - The logic has its own pack, so motor surges can't brown out the Teensy/IMU/XBee (the dissertation ran its Arduino off a motor pack and listed that as a possible cause of its oscillations).
 - Packs discharge unevenly, so the same PWM duty gives different wheel torque per pack — close a wheel-speed loop on the encoders rather than commanding raw PWM.
 - Optional battery monitoring needs a divider (Teensy analog max 3.3 V): 33 kΩ / 10 kΩ on a motor pack (12.6 V → ≈ 2.9 V), 10 kΩ / 20 kΩ on the PKCELL (4.2 V → 2.8 V). Pin 41/A17 is free.
