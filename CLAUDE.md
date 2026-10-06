@@ -83,23 +83,31 @@ Batteries:
 - **Motors:** the original packs from the past-documentation dissertation — **four packs, each 3× Epoch 18650 (2600 mAh, 8 A max discharge, protected) in series** = 3S: 11.1 V nominal, 12.6 V full, ~9 V empty. One pack per wheel, one per deck corner for mass balance (dissertation Fig 20).
 - **Logic:** one **PKCELL ICR18650 10,050 mAh** pack (Adafruit #5035; 3 cells in parallel, 3.7 V nominal, 4.2 V full, 3.0 V protection cutoff, 3 A max, JST-PH lead rated 2 A), near the center under the Teensy.
 
-```
-Epoch pack A + ─ switch ─ Driver A VIN
-Epoch pack B + ─ switch ─ Driver B VIN
-Epoch pack C + ─ switch ─ Driver C VIN
-Epoch pack D + ─ switch ─ Driver D VIN
+Two switches: one **motor switch** for all four Epoch packs and one **logic switch** for the PKCELL.
 
-PKCELL + ─ switch ─ 5 V boost (PowerBoost 1000C or Pololu S7V8F5) ─┬─ Teensy VIN
-                                                                  └─ Driver A–D VCC
-All pack negatives, boost GND, driver GNDs, Teensy GND ── common ground (never tie pack + terminals together)
 ```
+Epoch pack A + ──────────── Driver A VIN
+Epoch pack B + ──────────── Driver B VIN       (pack + leads stay separate)
+Epoch pack C + ──────────── Driver C VIN
+Epoch pack D + ──────────── Driver D VIN
+Epoch pack A–D − ─ joined ─ MOTOR SWITCH ─ common ground point
+
+PKCELL + ─ LOGIC SWITCH ─ Pololu U3V70F5 5 V boost ─┬─ Teensy VIN
+                                                   └─ Driver A–D VCC
+PKCELL −, boost GND, driver GNDs, Teensy GND ── common ground point (never tie pack + terminals together)
+```
+
+- **Motor switch:** ZF (Cherry) **CR series** rocker — **single-pole**, rated 20 A @ 125 VAC / 16 A @ 250 VAC (no DC rating confirmed; at 12.6 V and a few amps it's well within what an AC switch of that size handles). Because it's single-pole, it switches the **combined negative** of the four motor packs (low-side). Putting it on the + side would tie the four pack + terminals together — don't. Off = pack negatives float, so no motor current flows. Don't connect any motor pack − to ground anywhere except through this switch.
+- **Grounding:** bring the motor switch's output, the four driver GNDs, the boost GND and the Teensy GND to one point (star ground), so motor return current doesn't flow through the Teensy's ground wire.
+- **Logic switch:** on the PKCELL + lead, ahead of the boost; ≥ 1 A DC is plenty.
+- **Power sequence:** logic on first, then motors (so the firmware has driven the PWM pins low before the wheels get power and they don't twitch at boot — `setup()` doesn't do this yet; add it with the wheel driver code); motors off first, then logic.
 
 - **Before connecting any pack:** split each driver's VIN from VCC (the short orange wire ties them today — left tied, 12 V reaches VCC and back-feeds the Teensy VIN), and cut the Teensy's VIN–VUSB trace so the boost doesn't back-feed USB.
-- Teensy 4.1 VIN accepts **3.6–5.5 V** (PJRC). The PKCELL spans 3.0–4.2 V, so it's in spec when charged but drops below 3.6 V for the end of its discharge. Either boost it to 5 V (a buck won't work), or wire it straight to VIN and end runs once the pack reaches ~3.7 V. Logic load ≈ 0.25 A at 5 V ≈ 0.4 A from the pack, well inside the 2 A lead; runtime ≈ a day.
+- Teensy 4.1 VIN accepts **3.6–5.5 V** (PJRC). The PKCELL spans 3.0–4.2 V, so it's in spec when charged but drops below 3.6 V for the end of its discharge. The team chose to boost it to a 5 V rail with a **Pololu U3V70F5** (2.9–5 V in, 5 V ±4% out, ~7 A continuous input, reverse-voltage protection, UVLO 2.4 V falling, ENABLE pin = true shutdown). Add ~33 µF electrolytic across its VIN/GND to suppress plug-in LC spikes. The board is marked **0J11050**, which every U3V70x variant (5–15 V fixed and 4.5–20 V adjustable) shares — the team's board measured **5.09 V out from 4.15 V in** (no load), confirming the 5 V version. Logic load ≈ 0.25 A at 5 V ≈ 0.4 A from the pack, well inside the 2 A lead; runtime ≈ a day.
 - The logic has its own pack, so motor surges can't brown out the Teensy/IMU/XBee (the dissertation ran its Arduino off a motor pack and listed that as a possible cause of its oscillations).
 - Packs discharge unevenly, so the same PWM duty gives different wheel torque per pack — close a wheel-speed loop on the encoders rather than commanding raw PWM.
 - Optional battery monitoring needs a divider (Teensy analog max 3.3 V): 33 kΩ / 10 kΩ on a motor pack (12.6 V → ≈ 2.9 V), 10 kΩ / 20 kΩ on the PKCELL (4.2 V → 2.8 V). Pin 41/A17 is free.
-- Charging: Epoch holders have no balancing — remove cells and charge individually; before a run each pack ≈ 12.4–12.6 V with cells within ~0.05 V. Charge the PKCELL with a single-cell Li-ion charger at ≤ 3 A (or in place through the PowerBoost 1000C's USB charger).
+- Charging: Epoch holders have no balancing — remove cells and charge individually; before a run each pack ≈ 12.4–12.6 V with cells within ~0.05 V. Charge the PKCELL with a single-cell Li-ion charger at ≤ 3 A.
 
 ## Past Documentation
 
