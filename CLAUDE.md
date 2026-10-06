@@ -68,7 +68,7 @@ Transcribed from the team's hand-labeled wiring sheet, `teensy_pin_out.pdf` (rep
 
 ### Board-side wiring (confirmed by the team)
 
-- **TB9051FTG (×4):** Teensy orange → PWM1, blue → PWM2. OUT1/OUT2 → motor red/black. EN tied high, ENB tied low (always enabled). Short orange wire = power to both VIN and VCC; yellow = GND. Driver power comes from the **Teensy's VIN pin** (5 V rail), so motors run at ~5 V, not their rated 12 V, and motor current shares the Teensy's supply. OCM, DIAG, OCC are not connected (OCC defaults low).
+- **TB9051FTG (×4):** Teensy orange → PWM1, blue → PWM2. OUT1/OUT2 → motor red/black. EN tied high, ENB tied low (always enabled). Short orange wire = power to both VIN and VCC; yellow = GND. **Currently** driver power comes from the **Teensy's VIN pin** (5 V rail), so motors run at ~5 V, not their rated 12 V, and motor current shares the Teensy's supply — being replaced by battery power (see "Power subsystem" below). OCM, DIAG, OCC are not connected (OCC defaults low).
 - **Gearmotor encoders (×4):** blue (Vcc) → Teensy 3.3 V, green → GND; yellow (A) / white (B) → Teensy pins above. A/B swing 0–3.3 V, so they're safe for the Teensy with no level shifting. 3.3 V is just below Pololu's 3.5 V minimum encoder supply — if counts are missed or noisy, suspect this first.
 - **BNO085:** STEMMA QT red → Teensy 3.3 V, black → GND. I2C only; INT and RST not connected.
 - **XBee (table side):** Digi **XBee 3** (non-Pro, ~40 mA TX @ +8 dBm). VCC → Teensy 3.3 V, GND → GND.
@@ -76,6 +76,26 @@ Transcribed from the team's hand-labeled wiring sheet, `teensy_pin_out.pdf` (rep
 
 Notes:
 - Yellow/white match Pololu's encoder A/B lead colors. Encoder pins aren't all hardware-quadrature (XBAR) capable; use the interrupt-based `Encoder` library (every Teensy 4.1 digital pin has interrupts).
+
+### Power subsystem (planned, not yet wired)
+
+Batteries: the original packs from the past-documentation dissertation — **four packs, each 3× Epoch 18650 (2600 mAh, 8 A max discharge, protected) in series** = 3S: 11.1 V nominal, 12.6 V full, ~9 V empty. Layout follows the dissertation:
+
+```
+Pack A + ─ switch ─ Driver A VIN        (one pack per wheel, one pack per corner for mass balance)
+Pack B + ─ switch ─ Driver B VIN
+Pack C + ─ switch ─ Driver C VIN
+Pack D + ─ switch ─┬─ Driver D VIN
+                   └─ 12 V→5 V buck ─┬─ Teensy VIN
+                                     └─ Driver A–D VCC
+All pack negatives, buck GND, driver GNDs, Teensy GND ── common ground (never tie pack + terminals together)
+```
+
+- **Before connecting any pack:** split each driver's VIN from VCC (the short orange wire ties them today — left tied, 12 V reaches VCC and back-feeds the Teensy VIN), and cut the Teensy's VIN–VUSB trace so the buck doesn't back-feed USB.
+- Use a **switching (buck)** 5 V converter, not a linear one: a linear regulator dropping 12.6→5 V at ~0.3 A burns ~2 W. A buck holds 5 V down to ~7 V input, so pack D's sag under wheel D's load doesn't reset the Teensy.
+- Pack D carries wheel D plus ~0.3 A of logic, so it drains first; it's the one to monitor (optional divider on pin 41/A17: 33 kΩ to pack D +, 10 kΩ to GND → 12.6 V reads ≈ 2.9 V).
+- Packs discharge unevenly, so the same PWM duty gives different wheel torque per pack — close a wheel-speed loop on the encoders rather than commanding raw PWM.
+- Charging: no balancing in the holders — remove cells and charge individually; before a run, each pack ≈ 12.4–12.6 V with cells within ~0.05 V.
 
 ## Past Documentation
 
