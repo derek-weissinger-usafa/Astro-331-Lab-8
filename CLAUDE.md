@@ -58,14 +58,14 @@ Astro 331 Lab 8/                 <- git root (README, CLAUDE.md, lab slides)
 
 ### Teensy pin assignments
 
-Transcribed from the team's hand-labeled wiring sheet, `teensy_pin_out.pdf` (repo root). Wheels are labeled **A–D**; wire colors are the physical wire colors at the Teensy.
+Transcribed from the team's hand-labeled wiring sheet, `teensy_pin_out.pdf` (repo root), except the encoder pins: the table is actually wired yellow → 6–9 and white → 2–5 (found 2026-10-08 by hand-spin and `TEST` checks; the sheet shows 8–11 / 4–7). Wheels are labeled **A–D**; wire colors are the physical wire colors at the Teensy.
 
 | Wheel | PWM (orange) | PWM (blue) | Encoder ch. A (yellow) | Encoder ch. B (white) |
 |---|---|---|---|---|
-| A | 22 | 23 | 8 | 4 |
-| B | 14 | 15 | 9 | 5 |
-| C | 36 | 37 | 10 | 6 |
-| D | 24 | 25 | 11 | 7 |
+| A | 22 | 23 | 6 | 2 |
+| B | 14 | 15 | 7 | 3 |
+| C | 36 | 37 | 8 | 4 |
+| D | 24 | 25 | 9 | 5 |
 
 | Pin | Wire | Connects to |
 |---|---|---|

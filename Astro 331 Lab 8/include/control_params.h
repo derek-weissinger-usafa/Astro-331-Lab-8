@@ -29,7 +29,10 @@ constexpr float kNullGain = 5.0f;             // 1/s
 // Per-wheel signs, found during bring-up (see CLAUDE.md). +1 = as wired.
 //  Positive wheel speed is a right-hand rotation about the wheel axis in wheel_geometry.h.
 constexpr float kMotorSign[4] = {1.0f, 1.0f, 1.0f, 1.0f};    // + duty -> + speed?
-constexpr float kEncoderSign[4] = {1.0f, 1.0f, 1.0f, 1.0f};  // + count -> + speed?
+// Bring-up 2026-10-08: +duty spins all four CCW (= +axis), so kMotorSign stays +1. Encoders
+// counted negative (A, C, D measured; B inferred from the hand-spin test). D reads +26 rad/s
+// at TEST 0.3 after the flip; re-check A-C read positive before trusting SPEED.
+constexpr float kEncoderSign[4] = {-1.0f, -1.0f, -1.0f, -1.0f};  // + count -> + speed?
 
 // ---- Wheel speed loop (inner, 100 Hz) ----
 constexpr float kSpeedLoopHz = 100.0f;
