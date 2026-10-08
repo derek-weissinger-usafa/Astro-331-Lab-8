@@ -89,6 +89,8 @@ Notes:
 
 ### Power subsystem (planned, not yet wired)
 
+Printable bench wiring sheet (overview + every TB9051FTG pin): `power_wiring.html` (repo root; open in a browser).
+
 Batteries:
 - **Motors:** the original packs from the past-documentation dissertation — **four packs, each 3× Epoch 18650 (2600 mAh, 8 A max discharge, protected) in series** = 3S: 11.1 V nominal, 12.6 V full, ~9 V empty. One pack per wheel, one per deck corner for mass balance (dissertation Fig 20).
 - **Logic:** one **PKCELL ICR18650 10,050 mAh** pack (Adafruit #5035; 3 cells in parallel, 3.7 V nominal, 4.2 V full, 3.0 V protection cutoff, 3 A max, JST-PH lead rated 2 A), near the center under the Teensy.

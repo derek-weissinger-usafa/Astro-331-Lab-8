@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab 8 Power Wiring</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one bench sheet — system overview schematic, single-driver pin closeup, per-wheel table, checklist */
+:root {
+  --bg: #f3f5f7; --panel: #ffffff; --fg: #18212b; --muted: #5a6573; --rule: #d5dce3;
+  --v12: #c4372c; --v5: #a8700f; --gnd: #18212b; --pwm-o: #d9731c; --pwm-b: #2a66c9; --nc: #9aa4b0;
+  --box: #eef2f6; --warn-bg: #fdf0ee;
+  --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11151a; --panel: #181d24; --fg: #e4e9ef; --muted: #9aa5b2; --rule: #2c343e;
+  --v12: #ff6b5e; --v5: #e9b04a; --gnd: #cfd6de; --pwm-o: #f2954a; --pwm-b: #6aa0ff; --nc: #6b7580;
+  --box: #1f262e; --warn-bg: #2a1a18; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #11151a; --panel: #181d24; --fg: #e4e9ef; --muted: #9aa5b2; --rule: #2c343e;
+  --v12: #ff6b5e; --v5: #e9b04a; --gnd: #cfd6de; --pwm-o: #f2954a; --pwm-b: #6aa0ff; --nc: #6b7580;
+  --box: #1f262e; --warn-bg: #2a1a18; color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 56px; display: grid; gap: 28px; }
+header { display: grid; gap: 6px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-size: 28px; line-height: 1.2; margin: 0; text-wrap: balance; }
+h2 { font-size: 18px; margin: 0; text-wrap: balance; }
+p { margin: 0; max-width: 68ch; }
+section { display: grid; gap: 12px; }
+.sheet { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 12px; overflow-x: auto; }
+.sheet svg { display: block; width: 100%; min-width: 760px; height: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.legend i { display: inline-block; width: 26px; height: 0; border-top: 3px solid; }
+.warn { background: var(--warn-bg); border: 1px solid var(--v12); border-radius: 6px; padding: 14px 16px; display: grid; gap: 8px; }
+.warn strong { color: var(--v12); }
+ol, ul { margin: 0; padding-left: 22px; display: grid; gap: 6px; max-width: 72ch; }
+.tablewrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th { font-size: 12px; font-family: var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+tr:last-child td { border-bottom: 0; }
+td.pin { font-family: var(--mono); font-weight: 600; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.nc { color: var(--nc); }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+.cols > * { min-width: 0; }
+
+/* SVG */
+svg text { font-family: var(--sans); fill: var(--fg); }
+svg .mono { font-family: var(--mono); }
+svg .small { font-size: 12px; }
+svg .tiny { font-size: 11px; fill: var(--muted); }
+svg .label { font-size: 14px; font-weight: 600; }
+svg .blk { fill: var(--box); stroke: var(--fg); stroke-width: 1.5; }
+svg .drv { fill: var(--panel); stroke: var(--fg); stroke-width: 2; }
+svg .w { fill: none; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+svg .v12 { stroke: var(--v12); } svg .v5 { stroke: var(--v5); } svg .gnd { stroke: var(--gnd); }
+svg .po { stroke: var(--pwm-o); } svg .pb { stroke: var(--pwm-b); } svg .ncw { stroke: var(--nc); stroke-dasharray: 4 4; stroke-width: 2; }
+svg .dot { stroke: none; }
+svg .dot.gnd { fill: var(--gnd); } svg .dot.v5 { fill: var(--v5); }
+svg .pinpad { fill: var(--panel); stroke: var(--fg); stroke-width: 1.5; }
+svg .t12 { fill: var(--v12); } svg .t5 { fill: var(--v5); } svg .tnc { fill: var(--nc); }
+svg .tpo { fill: var(--pwm-o); } svg .tpb { fill: var(--pwm-b); }
+body { margin: 0; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Astro 331 Lab 8 · Power subsystem · bench sheet</div>
+    <h1>Motor and logic power wiring</h1>
+    <p>Four 3S Epoch packs (one per wheel), one PKCELL pack for the electronics through a Pololu U3V70F5 5 V boost, a single-pole motor switch on the motor packs' combined negative, and one star ground point.</p>
+  </header>
+
+  <div class="warn">
+    <strong>Before plugging in any pack</strong>
+    <ol>
+      <li>On every driver, remove the short orange wire that ties <b>VIN</b> to <b>VCC</b>. VIN gets only the pack +, VCC gets only the 5 V rail. Left tied, 12 V reaches the Teensy.</li>
+      <li>Disconnect the drivers from the Teensy's VIN pin. The Teensy VIN is fed only by the U3V70F5 now.</li>
+      <li>Cut the VIN–VUSB trace on the bottom of the Teensy.</li>
+    </ol>
+  </div>
+
+  <section>
+    <h2>System overview</h2>
+    <div class="legend">
+      <span><i style="border-color:var(--v12)"></i>Pack + (9–12.6 V)</span>
+      <span><i style="border-color:var(--v5)"></i>5 V rail</span>
+      <span><i style="border-color:var(--gnd)"></i>Ground / pack −</span>
+      <span><i style="border-color:var(--pwm-o)"></i>PWM signals</span>
+      <span>● = connection · lines crossing without a dot do not connect</span>
+    </div>
+    <div class="sheet">
+      <svg viewBox="0 0 960 520" role="img" aria-label="System power wiring overview">
+        <!-- Packs -->
+        <g>
+          <rect class="blk" x="60" y="40" width="140" height="64" rx="4"/>
+          <rect class="blk" x="60" y="140" width="140" height="64" rx="4"/>
+          <rect class="blk" x="60" y="240" width="140" height="64" rx="4"/>
+          <rect class="blk" x="60" y="340" width="140" height="64" rx="4"/>
+          <text class="label" x="76" y="68">Epoch pack A</text><text class="tiny" x="76" y="88">3S · 9–12.6 V</text>
+          <text class="label" x="76" y="168">Epoch pack B</text><text class="tiny" x="76" y="188">3S · 9–12.6 V</text>
+          <text class="label" x="76" y="268">Epoch pack C</text><text class="tiny" x="76" y="288">3S · 9–12.6 V</text>
+          <text class="label" x="76" y="368">Epoch pack D</text><text class="tiny" x="76" y="388">3S · 9–12.6 V</text>
+        </g>
+        <!-- Drivers -->
+        <g>
+          <rect class="drv" x="360" y="40" width="160" height="64" rx="4"/>
+          <rect class="drv" x="360" y="140" width="160" height="64" rx="4"/>
+          <rect class="drv" x="360" y="240" width="160" height="64" rx="4"/>
+          <rect class="drv" x="360" y="340" width="160" height="64" rx="4"/>
+          <g class="small">
+            <text class="label" x="400" y="72">Driver A</text><text class="tiny" x="400" y="90">OUT1/2 → motor A</text>
+            <text class="label" x="400" y="172">Driver B</text><text class="tiny" x="400" y="190">OUT1/2 → motor B</text>
+            <text class="label" x="400" y="272">Driver C</text><text class="tiny" x="400" y="290">OUT1/2 → motor C</text>
+            <text class="label" x="400" y="372">Driver D</text><text class="tiny" x="400" y="390">OUT1/2 → motor D</text>
+          </g>
+          <g class="tiny mono">
+            <text x="366" y="56">VIN</text><text x="366" y="100">GND</text>
+            <text x="488" y="56">VCC</text><text x="478" y="100">PWM</text>
+            <text x="366" y="156">VIN</text><text x="366" y="200">GND</text>
+            <text x="488" y="156">VCC</text><text x="478" y="200">PWM</text>
+            <text x="366" y="256">VIN</text><text x="366" y="300">GND</text>
+            <text x="488" y="256">VCC</text><text x="478" y="300">PWM</text>
+            <text x="366" y="356">VIN</text><text x="366" y="400">GND</text>
+            <text x="488" y="356">VCC</text><text x="478" y="400">PWM</text>
+          </g>
+        </g>
+        <!-- Pack + to VIN -->
+        <path class="w v12" d="M200 60 H360"/>
+        <path class="w v12" d="M200 160 H360"/>
+        <path class="w v12" d="M200 260 H360"/>
+        <path class="w v12" d="M200 360 H360"/>
+        <text class="tiny" x="212" y="52">+</text><text class="tiny" x="212" y="152">+</text>
+        <text class="tiny" x="212" y="252">+</text><text class="tiny" x="212" y="352">+</text>
+        <!-- Pack − to motor switch -->
+        <path class="w gnd" d="M60 84 H30 V452 H60"/>
+        <path class="w gnd" d="M60 184 H30"/><path class="w gnd" d="M60 284 H30"/><path class="w gnd" d="M60 384 H30"/>
+        <circle class="dot gnd" cx="30" cy="184" r="4.5"/><circle class="dot gnd" cx="30" cy="284" r="4.5"/><circle class="dot gnd" cx="30" cy="384" r="4.5"/>
+        <text class="tiny" x="44" y="78">−</text>
+        <!-- Motor switch -->
+        <rect class="blk" x="60" y="430" width="140" height="44" rx="4"/>
+        <text class="label" x="74" y="450">Motor switch</text><text class="tiny" x="74" y="466">ZF CR · single pole</text>
+        <path class="w gnd" d="M200 452 H240"/>
+        <!-- Driver GND to star -->
+        <path class="w gnd" d="M360 84 H300 V430"/>
+        <path class="w gnd" d="M360 184 H300"/><path class="w gnd" d="M360 284 H300"/><path class="w gnd" d="M360 384 H300"/>
+        <circle class="dot gnd" cx="300" cy="184" r="4.5"/><circle class="dot gnd" cx="300" cy="284" r="4.5"/><circle class="dot gnd" cx="300" cy="384" r="4.5"/>
+        <!-- Star ground -->
+        <rect class="blk" x="240" y="430" width="300" height="44" rx="4"/>
+        <text class="label" x="330" y="450">Star ground point</text>
+        <text class="tiny" x="300" y="466">every ground wire lands here, once</text>
+        <!-- PKCELL / logic switch / boost -->
+        <rect class="blk" x="760" y="240" width="160" height="64" rx="4"/>
+        <text class="label" x="776" y="266">PKCELL 10 Ah</text><text class="tiny" x="776" y="286">1S · 3.0–4.2 V</text>
+        <rect class="blk" x="760" y="150" width="160" height="44" rx="4"/>
+        <text class="label" x="776" y="177">Logic switch</text>
+        <rect class="blk" x="760" y="40" width="160" height="64" rx="4"/>
+        <text class="label" x="776" y="66">U3V70F5 boost</text><text class="tiny" x="776" y="86">5.09 V measured</text>
+        <path class="w gnd" d="M840 240 V194" style="stroke:var(--v12)"/>
+        <path class="w" d="M840 150 V104" style="stroke:var(--v12)"/>
+        <text class="tiny" x="848" y="222">PKCELL +</text><text class="tiny" x="848" y="132">VIN</text>
+        <!-- 5 V rail -->
+        <path class="w v5" d="M760 60 H560 V360"/>
+        <path class="w v5" d="M560 60 H520"/><path class="w v5" d="M560 160 H520"/><path class="w v5" d="M560 260 H520"/><path class="w v5" d="M560 360 H520"/>
+        <circle class="dot v5" cx="560" cy="60" r="4.5"/><circle class="dot v5" cx="560" cy="160" r="4.5"/><circle class="dot v5" cx="560" cy="260" r="4.5"/>
+        <path class="w v5" d="M760 88 H680 V330"/>
+        <text class="tiny" x="690" y="54">VOUT 5 V</text>
+        <!-- Teensy -->
+        <rect class="blk" x="620" y="330" width="120" height="72" rx="4"/>
+        <text class="label" x="640" y="358">Teensy 4.1</text><text class="tiny" x="640" y="376">VIN ← 5 V</text>
+        <path class="w po" d="M620 380 H590 V84 H520"/>
+        <path class="w po" d="M590 184 H520"/><path class="w po" d="M590 284 H520"/><path class="w po" d="M590 384 H520"/>
+        <circle class="dot" cx="590" cy="184" r="4.5" style="fill:var(--pwm-o)"/><circle class="dot" cx="590" cy="284" r="4.5" style="fill:var(--pwm-o)"/>
+        <text class="tiny" x="598" y="420">PWM1+PWM2 to each driver</text>
+        <!-- Logic grounds -->
+        <path class="w gnd" d="M680 402 V452 H540"/>
+        <path class="w gnd" d="M920 280 H944 V496 H500 V474"/>
+        <text class="tiny" x="690" y="446">Teensy GND</text>
+        <text class="tiny" x="760" y="490">PKCELL − / boost GND</text>
+      </svg>
+    </div>
+    <p style="color:var(--muted);font-size:14px">The orange bundle stands for each driver's own two PWM wires (orange and blue) from the Teensy; they are not shared. The pack + leads never touch each other; only the negatives are joined, and only through the motor switch.</p>
+  </section>
+
+  <section>
+    <h2>One driver, pin by pin</h2>
+    <p>Wire all four TB9051FTG carriers the same way. Wheel letter X is A, B, C or D; the table below gives each wheel's Teensy pins.</p>
+    <div class="sheet">
+      <svg viewBox="0 0 960 580" role="img" aria-label="TB9051FTG driver pin connections">
+        <!-- driver body -->
+        <rect class="drv" x="380" y="50" width="200" height="470" rx="6"/>
+        <text class="label" x="410" y="40">TB9051FTG carrier (driver X)</text>
+        <text class="tiny" x="398" y="300">power side</text>
+        <text class="tiny" x="502" y="300">logic side</text>
+        <!-- left pins -->
+        <g class="mono small">
+          <circle class="pinpad" cx="380" cy="100" r="6"/><text x="394" y="104">OUT1</text>
+          <circle class="pinpad" cx="380" cy="150" r="6"/><text x="394" y="154">OUT2</text>
+          <circle class="pinpad" cx="380" cy="330" r="6"/><text x="394" y="334">VIN</text>
+          <circle class="pinpad" cx="380" cy="380" r="6"/><text x="394" y="384">GND</text>
+          <circle class="pinpad" cx="380" cy="430" r="6"/><text x="394" y="434">VM</text>
+        </g>
+        <!-- right pins -->
+        <g class="mono small">
+          <circle class="pinpad" cx="580" cy="90" r="6"/><text x="532" y="94">VCC</text>
+          <circle class="pinpad" cx="580" cy="135" r="6"/><text x="532" y="139">GND</text>
+          <circle class="pinpad" cx="580" cy="180" r="6"/><text x="542" y="184">EN</text>
+          <circle class="pinpad" cx="580" cy="225" r="6"/><text x="532" y="229">ENB</text>
+          <circle class="pinpad" cx="580" cy="330" r="6"/><text x="524" y="334">PWM1</text>
+          <circle class="pinpad" cx="580" cy="375" r="6"/><text x="524" y="379">PWM2</text>
+          <circle class="pinpad" cx="580" cy="420" r="6"/><text x="532" y="424">OCM</text>
+          <circle class="pinpad" cx="580" cy="455" r="6"/><text x="524" y="459">DIAG</text>
+          <circle class="pinpad" cx="580" cy="490" r="6"/><text x="532" y="494">OCC</text>
+        </g>
+
+        <!-- Motor -->
+        <rect class="blk" x="60" y="70" width="170" height="110" rx="4"/>
+        <text class="label" x="76" y="96">Gearmotor X</text>
+        <text class="tiny" x="76" y="116">37D 12 V · 10:1</text>
+        <text class="tiny" x="76" y="146">encoder leads go to</text>
+        <text class="tiny" x="76" y="162">the Teensy, not here</text>
+        <path class="w" d="M230 100 H374" style="stroke:var(--v12)"/>
+        <path class="w gnd" d="M230 150 H374"/>
+        <text class="small" x="250" y="92">motor red</text>
+        <text class="small" x="250" y="142">motor black</text>
+
+        <!-- Pack -->
+        <rect class="blk" x="60" y="300" width="170" height="110" rx="4"/>
+        <text class="label" x="76" y="326">Epoch pack X</text>
+        <text class="tiny" x="76" y="346">3 × 18650 in series</text>
+        <text class="tiny" x="76" y="362">9–12.6 V</text>
+        <text class="small t12" x="210" y="334">+</text>
+        <text class="small" x="214" y="390">−</text>
+        <path class="w v12" d="M230 330 H374"/>
+        <text class="small t12" x="250" y="322">pack + (red)</text>
+        <path class="w gnd" d="M60 384 H30 V540 H80"/>
+        <text class="tiny" x="40" y="376">pack −</text>
+
+        <!-- Motor switch + star -->
+        <rect class="blk" x="80" y="518" width="150" height="44" rx="4"/>
+        <text class="label" x="94" y="538">Motor switch</text><text class="tiny" x="94" y="554">joined with packs A–D −</text>
+        <path class="w gnd" d="M230 540 H330"/>
+        <rect class="blk" x="330" y="534" width="300" height="40" rx="4"/>
+        <text class="label" x="420" y="559">Star ground point</text>
+        <path class="w gnd" d="M374 380 H250 V500 H360 V534"/>
+        <text class="small" x="250" y="372">driver GND</text>
+
+        <!-- VM -->
+        <path class="w ncw" d="M374 430 H330"/>
+        <text class="tiny" x="262" y="434">VM: leave open</text>
+
+        <!-- 5 V -->
+        <rect class="blk" x="760" y="62" width="170" height="56" rx="4"/>
+        <text class="label" x="776" y="86">5 V rail</text><text class="tiny" x="776" y="104">from U3V70F5 VOUT</text>
+        <path class="w v5" d="M586 90 H760"/>
+        <text class="small t5" x="620" y="82">VCC ← 5 V</text>
+
+        <!-- logic GND -->
+        <path class="w ncw" d="M586 135 H640"/>
+        <text class="tiny" x="648" y="139">logic GND: tied to power GND on the board,</text>
+        <text class="tiny" x="648" y="153">no extra wire needed</text>
+
+        <!-- EN / ENB jumpers -->
+        <text class="tiny" x="600" y="184">EN: jumper to VCC (high, enabled)</text>
+        <text class="tiny" x="600" y="229">ENB: jumper to GND (low, enabled)</text>
+
+        <!-- Teensy PWM -->
+        <rect class="blk" x="760" y="300" width="170" height="104" rx="4"/>
+        <text class="label" x="776" y="326">Teensy 4.1</text>
+        <text class="tiny" x="776" y="346">pins per wheel table</text>
+        <path class="w po" d="M586 330 H760"/>
+        <path class="w pb" d="M586 375 H760"/>
+        <text class="small tpo" x="620" y="322">orange wire</text>
+        <text class="small tpb" x="620" y="367">blue wire</text>
+
+        <!-- NC -->
+        <path class="w ncw" d="M586 420 H630"/><path class="w ncw" d="M586 455 H630"/><path class="w ncw" d="M586 490 H630"/>
+        <text class="tiny" x="640" y="458">OCM, DIAG, OCC: not connected</text>
+      </svg>
+    </div>
+  </section>
+
+  <section>
+    <h2>Driver pin map</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Driver pin</th><th>Wire</th><th>Goes to</th></tr></thead>
+        <tbody>
+          <tr><td class="pin">VIN</td><td><span class="sw" style="background:var(--v12)"></span>Pack + (red)</td><td>Epoch pack X + only</td></tr>
+          <tr><td class="pin">GND</td><td><span class="sw" style="background:var(--gnd)"></span>Ground</td><td>Star ground point (its own wire)</td></tr>
+          <tr><td class="pin">OUT1</td><td><span class="sw" style="background:var(--v12)"></span>Motor red</td><td>Gearmotor X</td></tr>
+          <tr><td class="pin">OUT2</td><td><span class="sw" style="background:var(--gnd)"></span>Motor black</td><td>Gearmotor X</td></tr>
+          <tr><td class="pin">VCC</td><td><span class="sw" style="background:var(--v5)"></span>5 V</td><td>U3V70F5 VOUT (5 V rail)</td></tr>
+          <tr><td class="pin">PWM1</td><td><span class="sw" style="background:var(--pwm-o)"></span>Orange</td><td>Teensy pin for wheel X (table below)</td></tr>
+          <tr><td class="pin">PWM2</td><td><span class="sw" style="background:var(--pwm-b)"></span>Blue</td><td>Teensy pin for wheel X (table below)</td></tr>
+          <tr><td class="pin">EN</td><td>Jumper</td><td>VCC (enabled)</td></tr>
+          <tr><td class="pin">ENB</td><td>Jumper</td><td>GND (enabled)</td></tr>
+          <tr class="nc"><td class="pin">VM, OCM, DIAG, OCC, logic GND</td><td>None</td><td>Leave open</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Per-wheel connections</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Wheel</th><th>Pack → VIN</th><th>PWM1 (orange)</th><th>PWM2 (blue)</th><th>Encoder A (yellow)</th><th>Encoder B (white)</th><th>Deck spot</th></tr></thead>
+        <tbody>
+          <tr><td class="pin">A</td><td>Epoch pack A</td><td class="pin">22</td><td class="pin">23</td><td class="pin">8</td><td class="pin">4</td><td>Corner by driver A</td></tr>
+          <tr><td class="pin">B</td><td>Epoch pack B</td><td class="pin">14</td><td class="pin">15</td><td class="pin">9</td><td class="pin">5</td><td>Corner by driver B</td></tr>
+          <tr><td class="pin">C</td><td>Epoch pack C</td><td class="pin">36</td><td class="pin">37</td><td class="pin">10</td><td class="pin">6</td><td>Corner by driver C</td></tr>
+          <tr><td class="pin">D</td><td>Epoch pack D</td><td class="pin">24</td><td class="pin">25</td><td class="pin">11</td><td class="pin">7</td><td>Corner by driver D</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="color:var(--muted);font-size:14px">Encoders: blue → Teensy 3.3 V, green → GND, yellow/white → the pins above. They never connect to the driver.</p>
+  </section>
+
+  <div class="cols">
+    <section>
+      <h2>Rules that keep it safe</h2>
+      <ul>
+        <li>Each pack + goes to one driver's VIN and nothing else. Never join two pack + leads.</li>
+        <li>Pack negatives reach ground only through the motor switch.</li>
+        <li>Every ground (four driver GNDs, motor switch, Teensy, PKCELL −/boost GND) gets its own wire to the star point.</li>
+        <li>Add about 33 µF electrolytic across the U3V70F5's VIN and GND.</li>
+        <li>Put a plug on each pack lead so packs come out for charging.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>Power-up order</h2>
+      <ol>
+        <li>Logic switch on. Wait a few seconds: firmware zeroes the PWM pins up to 3 s after boot.</li>
+        <li>Motor switch on.</li>
+        <li>To shut down: motor switch off, then logic switch off.</li>
+      </ol>
+    </section>
+  </div>
+</div>
+</body>
+</html>
