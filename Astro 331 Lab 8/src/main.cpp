@@ -45,9 +45,17 @@ static WheelSpeedLoop speedLoops[kN];
 static bool wheelEnabled[kN] = {true, true, true, true};  // fault-handling hook
 static float wheelCmd[kN] = {0, 0, 0, 0};                 // wheel speed setpoints, rad/s
 
-enum class State : uint8_t { Calibrating, Idle, Armed };
+// Manual: each wheel's speed loop tracks a setpoint typed with SPEED (bench / spin-up).
+enum class State : uint8_t { Calibrating, Idle, Armed, Manual };
 static State state = State::Calibrating;
-static char stateChar() { return state == State::Calibrating ? 'C' : (state == State::Idle ? 'I' : 'A'); }
+static char stateChar() {
+  switch (state) {
+    case State::Calibrating: return 'C';
+    case State::Idle: return 'I';
+    case State::Armed: return 'A';
+    default: return 'M';
+  }
+}
 
 // ---- Static calibration accumulators ----
 static constexpr uint32_t kCalDurationMs = 3000;
@@ -84,7 +92,7 @@ static void stopAllWheels() {
 static void disarm(const char* reason) {
   stopAllWheels();
   testWheel = -1;
-  if (state == State::Armed) state = State::Idle;
+  if (state == State::Armed || state == State::Manual) state = State::Idle;
   char msg[48];
   snprintf(msg, sizeof(msg), "# DISARM %s\n", reason);
   sayAll(msg);
@@ -175,6 +183,31 @@ static void handleCommand(const Command& c, CommandLink& from) {
       testEndMs = millis() + params::kTestDurationMs;
       break;
     }
+    case Cmd::Speed: {
+      if (state != State::Idle && state != State::Manual) {
+        from.send("# SPEED REFUSED: not idle/manual\n");
+        break;
+      }
+      if (state == State::Idle) {
+        testWheel = -1;
+        for (int i = 0; i < kN; i++) {
+          speedLoops[i].reset();
+          wheelCmd[i] = 0.0f;
+        }
+        state = State::Manual;
+      }
+      constexpr float kRpmToRadS = 6.2831853f / 60.0f;
+      float w = c.value * kRpmToRadS;
+      if (w > params::kWheelMaxSpeedRadS) w = params::kWheelMaxSpeedRadS;
+      if (w < -params::kWheelMaxSpeedRadS) w = -params::kWheelMaxSpeedRadS;
+      for (int i = 0; i < kN; i++)
+        if (c.wheel == Command::kAllWheels || c.wheel == i) wheelCmd[i] = w;
+      char msg[72];
+      snprintf(msg, sizeof(msg), "# MANUAL rpm A=%.0f B=%.0f C=%.0f D=%.0f\n", wheelCmd[0] / kRpmToRadS,
+               wheelCmd[1] / kRpmToRadS, wheelCmd[2] / kRpmToRadS, wheelCmd[3] / kRpmToRadS);
+      sayAll(msg);
+      break;
+    }
     default:
       from.send("# ?\n");
       break;
@@ -247,8 +280,19 @@ static void wheelLoop(float dt) {
     testWheel = -1;
   }
 
+  if (state == State::Manual) {
+    for (int i = 0; i < kN; i++) {
+      if (fabsf(wheels[i].speed()) > params::kWheelOverspeedRadS) {
+        disarm("WHEEL_OVERSPEED");
+        return;
+      }
+    }
+  }
+
   for (int i = 0; i < kN; i++) {
-    if (state == State::Armed && wheelEnabled[i]) {
+    if (state == State::Manual) {
+      wheels[i].setDuty(speedLoops[i].update(wheelCmd[i], wheels[i].speed(), dt), dt);
+    } else if (state == State::Armed && wheelEnabled[i]) {
       wheels[i].setDuty(speedLoops[i].update(wheelCmd[i], wheels[i].speed(), dt), dt);
     } else if (testing && i == testWheel) {
       wheels[i].setDuty(testDuty, dt);

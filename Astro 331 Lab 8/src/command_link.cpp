@@ -32,6 +32,20 @@ static Command parseLine(char* line) {
     } else {
       c.cmd = Cmd::Unknown;
     }
+  } else if (!strcmp(tok, "SPEED")) {
+    char* w = strtok_r(nullptr, " \t,", &save);
+    char* v = strtok_r(nullptr, " \t,", &save);
+    if (w && v && !strcmp(w, "ALL")) {
+      c.wheel = Command::kAllWheels;
+    } else if (w && v && w[0] >= 'A' && w[0] <= 'D' && w[1] == '\0') {
+      c.wheel = w[0] - 'A';
+    }
+    if (c.wheel >= 0) {
+      c.cmd = Cmd::Speed;
+      c.value = (float)atof(v);
+    } else {
+      c.cmd = Cmd::Unknown;
+    }
   } else {
     c.cmd = Cmd::Unknown;
   }

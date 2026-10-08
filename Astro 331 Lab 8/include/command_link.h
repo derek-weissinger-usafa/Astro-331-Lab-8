@@ -8,12 +8,15 @@
 //   STATUS         one-line state report
 //   PING           reply "PONG"
 //   TEST <A-D> <duty>   bench: spin one wheel open-loop at duty (-0.5..0.5) for 1 s (Idle only)
-enum class Cmd : uint8_t { None, Arm, Disarm, Kill, Status, Ping, Test, Unknown };
+//   SPEED <A-D|ALL> <rpm>  manual: closed-loop wheel speed setpoint (from Idle or Manual;
+//                          enters Manual). DISARM/KILL stops all wheels and returns to Idle.
+enum class Cmd : uint8_t { None, Arm, Disarm, Kill, Status, Ping, Test, Speed, Unknown };
 
 struct Command {
+  static constexpr int kAllWheels = 4;
   Cmd cmd = Cmd::None;
-  int wheel = -1;    // Test: 0..3 for A..D
-  float value = 0;   // Test: duty
+  int wheel = -1;    // Test/Speed: 0..3 for A..D; Speed also accepts kAllWheels
+  float value = 0;   // Test: duty. Speed: rpm
 };
 
 class CommandLink {
