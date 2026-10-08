@@ -44,6 +44,7 @@ static WheelMotor wheels[kN] = {
 static WheelSpeedLoop speedLoops[kN];
 static bool wheelEnabled[kN] = {true, true, true, true};  // fault-handling hook
 static float wheelCmd[kN] = {0, 0, 0, 0};                 // wheel speed setpoints, rad/s
+static float manualTarget[kN] = {0, 0, 0, 0};             // SPEED targets; wheelCmd ramps to these
 
 // Manual: each wheel's speed loop tracks a setpoint typed with SPEED (bench / spin-up).
 enum class State : uint8_t { Calibrating, Idle, Armed, Manual };
@@ -192,7 +193,7 @@ static void handleCommand(const Command& c, CommandLink& from) {
         testWheel = -1;
         for (int i = 0; i < kN; i++) {
           speedLoops[i].reset();
-          wheelCmd[i] = 0.0f;
+          wheelCmd[i] = manualTarget[i] = 0.0f;
         }
         state = State::Manual;
       }
@@ -201,10 +202,10 @@ static void handleCommand(const Command& c, CommandLink& from) {
       if (w > params::kWheelMaxSpeedRadS) w = params::kWheelMaxSpeedRadS;
       if (w < -params::kWheelMaxSpeedRadS) w = -params::kWheelMaxSpeedRadS;
       for (int i = 0; i < kN; i++)
-        if (c.wheel == Command::kAllWheels || c.wheel == i) wheelCmd[i] = w;
+        if (c.wheel == Command::kAllWheels || c.wheel == i) manualTarget[i] = w;
       char msg[72];
-      snprintf(msg, sizeof(msg), "# MANUAL rpm A=%.0f B=%.0f C=%.0f D=%.0f\n", wheelCmd[0] / kRpmToRadS,
-               wheelCmd[1] / kRpmToRadS, wheelCmd[2] / kRpmToRadS, wheelCmd[3] / kRpmToRadS);
+      snprintf(msg, sizeof(msg), "# MANUAL rpm A=%.0f B=%.0f C=%.0f D=%.0f\n", manualTarget[0] / kRpmToRadS,
+               manualTarget[1] / kRpmToRadS, manualTarget[2] / kRpmToRadS, manualTarget[3] / kRpmToRadS);
       sayAll(msg);
       break;
     }
@@ -291,7 +292,12 @@ static void wheelLoop(float dt) {
 
   for (int i = 0; i < kN; i++) {
     if (state == State::Manual) {
-      wheels[i].setDuty(speedLoops[i].update(wheelCmd[i], wheels[i].speed(), dt), dt);
+      // Ramp the setpoint toward the SPEED target (limits overshoot and current surges).
+      const float step = params::kManualAccelRadS2 * dt;
+      const float diff = manualTarget[i] - wheelCmd[i];
+      wheelCmd[i] += diff > step ? step : (diff < -step ? -step : diff);
+      wheels[i].setDuty(
+          speedLoops[i].update(wheelCmd[i], wheels[i].speed(), dt, params::kManualFreeSpeedRadS), dt);
     } else if (state == State::Armed && wheelEnabled[i]) {
       wheels[i].setDuty(speedLoops[i].update(wheelCmd[i], wheels[i].speed(), dt), dt);
     } else if (testing && i == testWheel) {

@@ -21,6 +21,9 @@ constexpr float kAttIntegralClamp = 0.2f;  // rad s
 // ---- Wheels (motors run from the ~5 V Teensy rail for now) ----
 constexpr float kWheelMaxSpeedRadS = 35.0f;   // command limit; ~80% of free speed
 constexpr float kWheelFreeSpeedRadS = 44.0f;  // TODO: measure at the actual supply voltage
+// Manual (SPEED) mode feedforward only. Measured 2026-10-08 on the USB/VIN 5 V supply:
+// TEST 0.3 gave 24-28 rad/s. Re-measure with TEST after moving to the 12 V packs.
+constexpr float kManualFreeSpeedRadS = 88.0f;
 constexpr float kWheelOverspeedRadS = 40.0f;  // measured speed above this => disarm
 constexpr float kWheelCmdLeadRadS = 8.0f;     // setpoint may lead measured speed by at most this
 constexpr float kNullBiasRadS = 0.0f;        // 4-wheel null-mode speed target (0 = just hold it)
@@ -63,5 +66,6 @@ constexpr uint32_t kSdFlushMs = 1000;      // max data lost on power cut
 constexpr uint32_t kUsbTelemetryMs = 50;
 constexpr float kTestMaxDuty = 0.5f;
 constexpr uint32_t kTestDurationMs = 1000;
+constexpr float kManualAccelRadS2 = 20.0f;  // SPEED setpoint ramp rate (~190 rpm/s)
 
 }  // namespace params
