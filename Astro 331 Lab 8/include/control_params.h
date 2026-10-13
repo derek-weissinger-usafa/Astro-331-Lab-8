@@ -67,5 +67,8 @@ constexpr uint32_t kUsbTelemetryMs = 50;
 constexpr float kTestMaxDuty = 0.5f;
 constexpr uint32_t kTestDurationMs = 1000;
 constexpr float kManualAccelRadS2 = 20.0f;  // SPEED setpoint ramp rate (~190 rpm/s)
+// Extra first-order low-pass on measured wheel speed, Manual mode only (speed loop + USB
+// telemetry). Larger = smoother but more lag (more overshoot risk). 0 disables it.
+constexpr float kManualSpeedLpfTauS = 0.1f;
 
 }  // namespace params

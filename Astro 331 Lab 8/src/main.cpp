@@ -45,6 +45,7 @@ static WheelSpeedLoop speedLoops[kN];
 static bool wheelEnabled[kN] = {true, true, true, true};  // fault-handling hook
 static float wheelCmd[kN] = {0, 0, 0, 0};                 // wheel speed setpoints, rad/s
 static float manualTarget[kN] = {0, 0, 0, 0};             // SPEED targets; wheelCmd ramps to these
+static float manualSpeed[kN] = {0, 0, 0, 0};              // low-passed wheel speed, rad/s (Manual)
 
 // Manual: each wheel's speed loop tracks a setpoint typed with SPEED (bench / spin-up).
 enum class State : uint8_t { Calibrating, Idle, Armed, Manual };
@@ -126,6 +127,9 @@ static void resetCalibration() {
   for (int i = 0; i < 3; i++) gSum[i] = gSumSq[i] = aSum[i] = 0.0;
 }
 
+// Wheel speed as the active loop sees it: low-passed in Manual, raw filter otherwise.
+static float shownSpeed(int i) { return state == State::Manual ? manualSpeed[i] : wheels[i].speed(); }
+
 static void printUsbTelemetry() {
   const Quat q = ekf.quaternion();
   const Vec3 e = ekf.eulerRad() * kRadToDeg;
@@ -134,8 +138,8 @@ static void printUsbTelemetry() {
   Serial.printf(
       "%lu,%.5f,%.5f,%.5f,%.5f,%.3f,%.3f,%.3f,%.4f,%.4f,%.4f,%.3f,%.3f,%.3f,%d,%.1f,%.1f,%.1f,%.1f,%c\n",
       millis(), q.w, q.x, q.y, q.z, e.x, e.y, e.z, b.x, b.y, b.z, s.x, s.y, s.z,
-      static_cast<int>(lastAccelResult), wheels[0].speed(), wheels[1].speed(), wheels[2].speed(),
-      wheels[3].speed(), stateChar());
+      static_cast<int>(lastAccelResult), shownSpeed(0), shownSpeed(1), shownSpeed(2), shownSpeed(3),
+      stateChar());
 }
 
 static void logData() {
@@ -270,7 +274,12 @@ static void controlStep(float dt) {
 
 // Inner loop at kSpeedLoopHz: encoder speeds, speed PI, motor outputs, bench test.
 static void wheelLoop(float dt) {
-  for (int i = 0; i < kN; i++) wheels[i].updateSpeed(dt);
+  // Manual-mode low-pass runs in every state so it is already settled when SPEED starts.
+  const float lpfA = dt / (params::kManualSpeedLpfTauS + dt);
+  for (int i = 0; i < kN; i++) {
+    wheels[i].updateSpeed(dt);
+    manualSpeed[i] += lpfA * (wheels[i].speed() - manualSpeed[i]);
+  }
 
   const bool testing = testWheel >= 0 && (int32_t)(millis() - testEndMs) < 0;
   if (testWheel >= 0 && !testing) {
@@ -293,11 +302,14 @@ static void wheelLoop(float dt) {
   for (int i = 0; i < kN; i++) {
     if (state == State::Manual) {
       // Ramp the setpoint toward the SPEED target (limits overshoot and current surges).
+      // The integrator is held while ramping so it doesn't wind up and overshoot at the end.
       const float step = params::kManualAccelRadS2 * dt;
       const float diff = manualTarget[i] - wheelCmd[i];
-      wheelCmd[i] += diff > step ? step : (diff < -step ? -step : diff);
-      wheels[i].setDuty(
-          speedLoops[i].update(wheelCmd[i], wheels[i].speed(), dt, params::kManualFreeSpeedRadS), dt);
+      const bool ramping = fabsf(diff) > step;
+      wheelCmd[i] += ramping ? (diff > 0.0f ? step : -step) : diff;
+      wheels[i].setDuty(speedLoops[i].update(wheelCmd[i], manualSpeed[i], dt,
+                                             params::kManualFreeSpeedRadS, !ramping),
+                        dt);
     } else if (state == State::Armed && wheelEnabled[i]) {
       wheels[i].setDuty(speedLoops[i].update(wheelCmd[i], wheels[i].speed(), dt), dt);
     } else if (testing && i == testWheel) {

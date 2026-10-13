@@ -10,9 +10,11 @@ class WheelSpeedLoop {
 
   // cmd, meas in rad/s. Returns duty (before the motor's slew limit).
   // freeSpeed: wheel speed per unit duty, for the feedforward term.
-  float update(float cmd, float meas, float dt, float freeSpeed = params::kWheelFreeSpeedRadS) {
+  // integrate = false holds the integrator (e.g. while a setpoint ramp is in progress).
+  float update(float cmd, float meas, float dt, float freeSpeed = params::kWheelFreeSpeedRadS,
+               bool integrate = true) {
     const float err = cmd - meas;
-    integral_ += params::kSpeedKi * err * dt;
+    if (integrate) integral_ += params::kSpeedKi * err * dt;
     if (integral_ > params::kSpeedIntegralClamp) integral_ = params::kSpeedIntegralClamp;
     if (integral_ < -params::kSpeedIntegralClamp) integral_ = -params::kSpeedIntegralClamp;
 
