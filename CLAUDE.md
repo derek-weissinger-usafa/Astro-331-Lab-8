@@ -30,7 +30,7 @@ Astro 331 Lab 8/                 <- git root (README, CLAUDE.md, lab slides)
     └── test/                    <- PlatformIO unit tests
 ```
 
-**Open issues — read `HANDOFF_2026-10-15.md` first:** encoder A/B outputs are ~5 V into 3.3 V-only Teensy pins (needs level shifting), wheel A rubs and its pack is ~1 V low, wheel C's high duty/oscillation is unexplained, and wheel speeds logged before 2026-10-15's gear-ratio fix read 1.6× low. Bench scripts are in `tools/` (`speed_sweep.py`, `wheel_hold.py`).
+**Open issues — read `HANDOFF_2026-10-15.md` first:** wheel A rubs and its pack is ~1 V low, wheel C's high duty/oscillation is unexplained, and wheel speeds logged before 2026-10-15's gear-ratio fix read 1.6× low. Bench scripts are in `tools/` (`speed_sweep.py`, `wheel_hold.py`).
 
 **Status:** Attitude determination is implemented (build-verified, not yet run on hardware). Everything lives in the PlatformIO project folder:
 - `include/frames.h` — frame/sign conventions (body z up, right-handed; x=roll, y=pitch, z=yaw; q is inertial→body, Hamilton, scalar-first). Read this before touching estimator or control math.
@@ -81,10 +81,10 @@ Transcribed from the team's hand-labeled wiring sheet, `teensy_pin_out.pdf` (rep
 ### Board-side wiring (confirmed by the team)
 
 - **TB9051FTG (×4):** Teensy orange → PWM1, blue → PWM2. OUT1/OUT2 → motor red/black. EN tied high, ENB tied low (always enabled). Yellow = GND. **The firmware is configured for 12 V motors** from the Epoch 3S packs (see "Power subsystem" below); earlier the drivers were powered from the Teensy's 5 V VIN pin. As of 2026-10-06 the new power wiring has **not yet been powered up**. OCM, DIAG, OCC are not connected (OCC defaults low).
-- **Gearmotor encoders (×4):** as of 2026-10-15, powered from a **separate ~5 V pack** (measured 4.96 V), green → GND; yellow (A) / white (B) → Teensy pins above. **Warning:** Pololu encoder outputs swing 0–Vcc, so A/B now put ~5 V on Teensy pins 2–9, which are **3.3 V-only (not 5 V tolerant)**. Add level shifting (e.g. a 10 kΩ / 20 kΩ divider per line, or a level-shifter IC) before extended running. (Earlier they ran from the Teensy 3.3 V pin, below Pololu's 3.5 V minimum.)
+- **Gearmotor encoders (×4):** blue (Vcc) → Teensy 3.3 V (re-confirmed 2026-10-15), green → GND; yellow (A) / white (B) → Teensy pins above. A/B swing 0–3.3 V, so they're safe for the Teensy with no level shifting. 3.3 V is just below Pololu's 3.5 V minimum encoder supply — if counts are missed or noisy, suspect this first.
 - **BNO085:** STEMMA QT red → Teensy 3.3 V, black → GND. I2C only; INT and RST not connected.
 - **XBee (table side):** Digi **XBee 3** (non-Pro, ~40 mA TX @ +8 dBm). VCC → Teensy 3.3 V, GND → GND.
-- **Teensy 3.3 V rail budget (250 mA max):** XBee 3 (~40 mA TX) + BNO085 (tens of mA) ≈ 60–80 mA now that the encoders have their own pack. Swapping in an XBee 3 **Pro** (~135 mA TX) would leave little margin.
+- **Teensy 3.3 V rail budget (250 mA max):** XBee 3 (~40 mA TX) + 4 encoders (~40 mA) + BNO085 (tens of mA) ≈ 100–120 mA. Swapping in an XBee 3 **Pro** (~135 mA TX) would leave little margin.
 
 Notes:
 - Yellow/white match Pololu's encoder A/B lead colors. Encoder pins aren't all hardware-quadrature (XBAR) capable; use the interrupt-based `Encoder` library (every Teensy 4.1 digital pin has interrupts).
