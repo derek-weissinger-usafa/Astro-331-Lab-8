@@ -13,7 +13,8 @@ class WheelMotor {
 
   void begin();
 
-  // Command motor duty in [-1, 1]; applies the duty cap, slew limit and motor sign.
+  // Command motor duty in [-1, 1] (wheel-axis sign convention); applies the back-EMF
+  // current limit, duty cap, slew limit and motor sign.
   // dt is the time since the previous call (s).
   void setDuty(float duty, float dt);
   void stop();  // zero output immediately (no slew)
@@ -22,7 +23,15 @@ class WheelMotor {
   void updateSpeed(float dt);
 
   float speed() const { return speed_; }
+
+  // Raw encoder counts since the last zeroCount() (same sign as speed()). Zeroing uses an
+  // offset, so it doesn't disturb the speed estimate. 400 counts = 1 output turn (6.3:1).
+  long count() { return (long)encSign_ * (enc_.read() - zeroOffset_); }
+  void zeroCount() { zeroOffset_ = enc_.read(); }
   float duty() const { return duty_; }
+  // Applied duty (after current limit, cap and slew) in the wheel-axis sign convention,
+  // i.e. the same sign as speed(). Used for telemetry.
+  float axisDuty() const { return duty_ * motorSign_; }
 
  private:
   void writePwm(float signedDuty);
@@ -33,4 +42,5 @@ class WheelMotor {
   float duty_ = 0.0f;   // last applied (after sign), for the slew limit
   float speed_ = 0.0f;  // rad/s, filtered
   long lastCount_ = 0;
+  long zeroOffset_ = 0;
 };

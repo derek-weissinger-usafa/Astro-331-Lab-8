@@ -25,11 +25,17 @@ void WheelMotor::writePwm(float signedDuty) {
 }
 
 void WheelMotor::setDuty(float duty, float dt) {
+  // Current limit: keep the duty within a band around the back-EMF duty (speed/free speed).
+  const float emfDuty = speed_ / params::kWheelFreeSpeedRadS;
+  const float band = params::kMotorCurrentLimitA / params::kMotorStallCurrentA;
+  if (duty > emfDuty + band) duty = emfDuty + band;
+  if (duty < emfDuty - band) duty = emfDuty - band;
+
   float target = duty * motorSign_;
   if (target > params::kMaxDuty) target = params::kMaxDuty;
   if (target < -params::kMaxDuty) target = -params::kMaxDuty;
 
-  // Slew limit: protects the shared 5 V rail from current steps.
+  // Slew limit: smooths current steps drawn from the pack.
   const float step = params::kDutySlewPerSec * dt;
   if (target > duty_ + step) target = duty_ + step;
   if (target < duty_ - step) target = duty_ - step;

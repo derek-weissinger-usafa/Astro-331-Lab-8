@@ -20,9 +20,10 @@ constexpr int kNumWheels = 4;
 constexpr int kPinWheelPwm1[kNumWheels] = {22, 14, 36, 24};  // orange wire -> driver PWM1
 constexpr int kPinWheelPwm2[kNumWheels] = {23, 15, 37, 25};  // blue wire   -> driver PWM2
 
-// Wheel encoders (Pololu 64 CPR at motor shaft, 640 CPR at output). Not all are XBAR
-// quadrature-capable, so use the interrupt-based Encoder library.
-// Encoders are powered from 3.3 V (below Pololu's 3.5 V spec minimum), so A/B are 3.3 V logic.
+// Wheel encoders (Pololu 64 CPR at motor shaft, 400 CPR at output with the 6.3:1 gearbox). Not
+// all are XBAR quadrature-capable, so use the interrupt-based Encoder library.
+// WARNING: as of 2026-10-15 the encoders run from a separate ~5 V pack, so A/B swing 0-5 V into
+// these 3.3 V-only Teensy pins. Add level shifting (e.g. 10k/20k dividers) before relying on it.
 // As actually wired on the table (differs from teensy_pin_out.pdf, which shows 8-11 / 4-7).
 constexpr int kPinWheelEncA[kNumWheels] = {6, 7, 8, 9};  // yellow
 constexpr int kPinWheelEncB[kNumWheels] = {2, 3, 4, 5};  // white

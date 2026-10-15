@@ -136,10 +136,12 @@ static void printUsbTelemetry() {
   const Vec3 b = ekf.gyroBias() * kRadToDeg;
   const Vec3 s = ekf.sigmaRad() * kRadToDeg;
   Serial.printf(
-      "%lu,%.5f,%.5f,%.5f,%.5f,%.3f,%.3f,%.3f,%.4f,%.4f,%.4f,%.3f,%.3f,%.3f,%d,%.1f,%.1f,%.1f,%.1f,%c\n",
+      "%lu,%.5f,%.5f,%.5f,%.5f,%.3f,%.3f,%.3f,%.4f,%.4f,%.4f,%.3f,%.3f,%.3f,%d,%.1f,%.1f,%.1f,%.1f,%c,"
+      "%.3f,%.3f,%.3f,%.3f\n",
       millis(), q.w, q.x, q.y, q.z, e.x, e.y, e.z, b.x, b.y, b.z, s.x, s.y, s.z,
       static_cast<int>(lastAccelResult), shownSpeed(0), shownSpeed(1), shownSpeed(2), shownSpeed(3),
-      stateChar());
+      stateChar(), wheels[0].axisDuty(), wheels[1].axisDuty(), wheels[2].axisDuty(),
+      wheels[3].axisDuty());
 }
 
 static void logData() {
@@ -149,7 +151,10 @@ static void logData() {
   r.accel = latestAccel;
   r.mag = latestMag;
   constexpr float kRadSToRpm = 60.0f / 6.2831853f;
-  for (int i = 0; i < kN; i++) r.rpm[i] = wheels[i].speed() * kRadSToRpm;
+  for (int i = 0; i < kN; i++) {
+    r.rpm[i] = wheels[i].speed() * kRadSToRpm;
+    r.duty[i] = wheels[i].axisDuty();
+  }
   logger.logRow(r);
 }
 
@@ -213,6 +218,20 @@ static void handleCommand(const Command& c, CommandLink& from) {
       sayAll(msg);
       break;
     }
+    case Cmd::Counts: {
+      long n[kN];
+      for (int i = 0; i < kN; i++) n[i] = wheels[i].count();
+      const float k = 1.0f / params::kEncoderCountsPerRev;
+      char msg[128];
+      snprintf(msg, sizeof(msg), "COUNTS A=%ld B=%ld C=%ld D=%ld turns A=%.3f B=%.3f C=%.3f D=%.3f\n", n[0],
+               n[1], n[2], n[3], n[0] * k, n[1] * k, n[2] * k, n[3] * k);
+      from.send(msg);
+      break;
+    }
+    case Cmd::Zero:
+      for (int i = 0; i < kN; i++) wheels[i].zeroCount();
+      from.send("# ZERO counts\n");
+      break;
     default:
       from.send("# ?\n");
       break;
@@ -375,7 +394,8 @@ static void handleCalibrationSample(const ImuSample& s) {
   Serial.printf("# calibrated: bias[deg/s]=%.4f,%.4f,%.4f  (N=%lu)\n", mean.x * kRadToDeg,
                 mean.y * kRadToDeg, mean.z * kRadToDeg, (unsigned long)calGyroN);
   Serial.println(
-      "# t_ms,qw,qx,qy,qz,roll,pitch,yaw,bx,by,bz,sig_roll,sig_pitch,sig_yaw,accel_status,w0,w1,w2,w3,state");
+      "# t_ms,qw,qx,qy,qz,roll,pitch,yaw,bx,by,bz,sig_roll,sig_pitch,sig_yaw,accel_status,w0,w1,w2,w3,state,"
+      "dutyA,dutyB,dutyC,dutyD");
   haveLastGyro = false;
   state = State::Idle;
   sayAll("# READY (idle). Send ARM to hold level.\n");

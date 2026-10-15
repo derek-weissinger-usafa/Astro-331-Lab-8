@@ -10,7 +10,9 @@
 //   TEST <A-D> <duty>   bench: spin one wheel open-loop at duty (-0.5..0.5) for 1 s (Idle only)
 //   SPEED <A-D|ALL> <rpm>  manual: closed-loop wheel speed setpoint (from Idle or Manual;
 //                          enters Manual). DISARM/KILL stops all wheels and returns to Idle.
-enum class Cmd : uint8_t { None, Arm, Disarm, Kill, Status, Ping, Test, Speed, Unknown };
+//   COUNTS         raw encoder counts per wheel since the last ZERO (+ output turns at kEncoderCountsPerRev)
+//   ZERO           zero the COUNTS readout (any state; does not affect speed or control)
+enum class Cmd : uint8_t { None, Arm, Disarm, Kill, Status, Ping, Test, Speed, Counts, Zero, Unknown };
 
 struct Command {
   static constexpr int kAllWheels = 4;

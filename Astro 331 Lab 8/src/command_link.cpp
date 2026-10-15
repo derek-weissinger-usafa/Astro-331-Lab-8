@@ -22,6 +22,10 @@ static Command parseLine(char* line) {
     c.cmd = Cmd::Status;
   } else if (!strcmp(tok, "PING")) {
     c.cmd = Cmd::Ping;
+  } else if (!strcmp(tok, "COUNTS")) {
+    c.cmd = Cmd::Counts;
+  } else if (!strcmp(tok, "ZERO")) {
+    c.cmd = Cmd::Zero;
   } else if (!strcmp(tok, "TEST")) {
     char* w = strtok_r(nullptr, " \t,", &save);
     char* d = strtok_r(nullptr, " \t,", &save);

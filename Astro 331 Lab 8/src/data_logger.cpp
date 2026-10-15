@@ -7,7 +7,8 @@
 static const char kHeader[] =
     "mcutime_ms,gyro_x_rad_s,gyro_y_rad_s,gyro_z_rad_s,accel_x_m_s2,accel_y_m_s2,accel_z_m_s2,"
     "mag_x_uT,mag_y_uT,mag_z_uT,motor_a_measured_rate_rpm,motor_b_measured_rate_rpm,"
-    "motor_c_measured_rate_rpm,motor_d_measured_rate_rpm\n";
+    "motor_c_measured_rate_rpm,motor_d_measured_rate_rpm,"
+    "motor_a_duty,motor_b_duty,motor_c_duty,motor_d_duty\n";
 
 void DataLogger::say(const char* msg) {
   const size_t n = strlen(msg);
@@ -51,9 +52,10 @@ void DataLogger::logRow(const LogRow& r) {
   char line[192];
   const int n = snprintf(
       line, sizeof(line),
-      "%lu,%.5f,%.5f,%.5f,%.3f,%.3f,%.3f,%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.1f\n",
+      "%lu,%.5f,%.5f,%.5f,%.3f,%.3f,%.3f,%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.1f,%.3f,%.3f,%.3f,%.3f\n",
       (unsigned long)r.ms, r.gyro.x, r.gyro.y, r.gyro.z, r.accel.x, r.accel.y, r.accel.z, r.mag.x,
-      r.mag.y, r.mag.z, r.rpm[0], r.rpm[1], r.rpm[2], r.rpm[3]);
+      r.mag.y, r.mag.z, r.rpm[0], r.rpm[1], r.rpm[2], r.rpm[3], r.duty[0], r.duty[1], r.duty[2],
+      r.duty[3]);
   if (n <= 0 || n >= (int)sizeof(line)) return;
 
   if (sd_) {

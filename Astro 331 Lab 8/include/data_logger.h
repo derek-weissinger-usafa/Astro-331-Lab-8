@@ -10,7 +10,8 @@
 //
 // Columns / units:
 //   mcutime_ms, gyro_x/y/z (rad/s, uncalibrated, not bias-corrected), accel_x/y/z (m/s^2),
-//   mag_x/y/z (uT, uncalibrated), motor_a..d_measured_rate (rpm, filtered encoder speed)
+//   mag_x/y/z (uT, uncalibrated), motor_a..d_measured_rate (rpm, filtered encoder speed),
+//   motor_a..d_duty (applied motor duty, -1..1, same sign convention as the rate)
 //
 // Never blocks loop(): SD data is buffered in RAM and written in 512-byte chunks
 // (one per service() call) with a periodic flush; radio rows are dropped if the
@@ -22,6 +23,7 @@ struct LogRow {
   Vec3 accel{0, 0, 0};
   Vec3 mag{0, 0, 0};
   float rpm[4] = {0, 0, 0, 0};
+  float duty[4] = {0, 0, 0, 0};
 };
 
 class DataLogger {
