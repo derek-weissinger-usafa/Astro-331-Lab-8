@@ -15,7 +15,10 @@
 //   motor_a..d_duty (applied duty, -1..1), then the attitude estimator (EKF) output:
 //   qw,qx,qy,qz (inertial->body), roll/pitch/yaw (deg, 3-2-1), gyro bias x/y/z (rad/s),
 //   1-sigma roll/pitch/yaw (deg), accel_status (0 applied, 1 gated, 2 singular), state (C/I/A/M),
-//   demo_phase (-/L/U/H/D/S), rate_ref_rad_s, yaw_ref_deg (DEMO SPIN reference; 0 when off).
+//   demo_phase (-/L/U/H/D/S), rate_ref_rad_s, yaw_ref_deg (DEMO SPIN reference; 0 when off),
+//   gyro_seq (BNO085 report counter, 0-255), gyro_seq_missed (cumulative reports never received).
+//   A row-to-row gyro_seq step > 1 = lost in transfer to the Teensy; an interval > 15 ms with a
+//   step of exactly 1 = the BNO085 itself sent late.
 //
 // Never blocks loop(): SD data is buffered in RAM and written in 512-byte chunks (one per
 // service() call); radio rows are dropped if the serial TX buffer is full. Rows that don't fit
@@ -37,6 +40,8 @@ struct LogRow {
   char demoPhase = '-';  // DEMO SPIN phase: - off, L level, U spin-up, H hold, D spin-down, S settle
   float rateRef = 0;     // demo reference yaw rate, rad/s
   float yawRefDeg = 0;   // demo reference yaw, deg
+  int gyroSeq = 0;           // BNO085 gyro report sequence number (0-255, +1 per report sent)
+  uint32_t seqMissed = 0;    // cumulative gyro reports sent by the BNO085 but never received
 };
 
 class DataLogger {

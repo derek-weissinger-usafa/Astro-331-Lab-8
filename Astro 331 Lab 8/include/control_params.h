@@ -77,6 +77,16 @@ constexpr uint32_t kImuTimeoutMs = 100;
 // Sensor collection and control run at 100 Hz: the gyro report (imu_bno085.cpp) drives
 // EKF predict + the attitude step, and the wheel speed loop runs at kSpeedLoopHz.
 
+// ---- Gyro bias calibration (at boot and on CALIBRATE) ----
+// The z (yaw) bias can only come from this static average (gravity carries no heading info).
+// Static test 2026-10-15: z noise 2.17e-4 rad/s/sqrt(Hz) => bias error ~ noise/sqrt(T):
+// 3 s -> ~26 deg/h of yaw drift (measured 27 deg/h); 60 s -> ~6 deg/h.
+constexpr uint32_t kCalDurationMs = 60000;
+constexpr uint32_t kCalProgressMs = 10000;   // progress message interval
+
+// ---- IMU sample-loss diagnostics ----
+constexpr float kImuGapMs = 15.0f;  // gyro interval above this (nominal 10 ms) counts as a gap
+
 // ---- Data log (SD card + XBee) / telemetry / bench ----
 constexpr uint32_t kXbeeBaud = 9600;       // ~960 B/s budget
 // One log row per gyro sample (~100 Hz). Rows are ~230-260 B, so the 9600-baud XBee gets

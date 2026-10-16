@@ -26,6 +26,8 @@ static Command parseLine(char* line) {
     c.cmd = Cmd::Counts;
   } else if (!strcmp(tok, "ZERO")) {
     c.cmd = Cmd::Zero;
+  } else if (!strcmp(tok, "CALIBRATE")) {
+    c.cmd = Cmd::Calibrate;
   } else if (!strcmp(tok, "STOP")) {
     c.cmd = Cmd::Stop;
   } else if (!strcmp(tok, "DEMO")) {

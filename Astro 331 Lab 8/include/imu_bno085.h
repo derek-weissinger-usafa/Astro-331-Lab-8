@@ -13,6 +13,9 @@ struct ImuSample {
   enum Kind : uint8_t { None, Gyro, Accel, Mag } kind = None;
   Vec3 v{0.0f, 0.0f, 0.0f};  // gyro: rad/s, accel: m/s^2, mag: uT (body frame)
   uint32_t t_us = 0;         // micros() when the report was read on the host
+  // Per-sensor 8-bit report counter set by the BNO085 itself: +1 for every report it sends.
+  // A jump > 1 means the chip sent reports the host never received.
+  uint8_t seq = 0;
 };
 
 class Bno085Imu {

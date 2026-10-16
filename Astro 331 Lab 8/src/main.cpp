@@ -64,14 +64,22 @@ static char stateChar() {
 }
 
 // ---- Static calibration accumulators ----
-static constexpr uint32_t kCalDurationMs = 3000;
 static constexpr float kCalMaxGyroStd = 0.01f;    // rad/s per axis, else "not still"
 static constexpr float kCalMaxGyroMean = 0.05f;   // rad/s, rejects a rotating table
 static constexpr uint32_t kMinCalSamples = 100;
 
-static uint32_t calStartMs = 0;
+static uint32_t calStartMs = 0, calProgressMs = 0;
 static uint32_t calGyroN = 0, calAccelN = 0;
 static double gSum[3], gSumSq[3], aSum[3];
+
+// ---- IMU sample-loss diagnostics (gyro stream, all states) ----
+// seqMissed: reports the BNO085 sent but the Teensy never received (gaps in its sequence number).
+// chipGaps:  intervals > kImuGapMs with NO sequence gap, i.e. the BNO085 itself sent late.
+static uint8_t lastGyroSeq = 0;
+static uint32_t lastGyroSeqUs = 0;
+static bool haveGyroSeq = false;
+static uint32_t seqMissed = 0, chipGaps = 0;
+static float maxGyroGapMs = 0.0f;
 
 static uint32_t lastGyroUs = 0, lastGyroMs = 0;
 static bool haveLastGyro = false;
@@ -205,9 +213,38 @@ static void stopDemo(CommandLink& from) {
 }
 
 static void resetCalibration() {
-  calStartMs = millis();
+  calStartMs = calProgressMs = millis();
   calGyroN = calAccelN = 0;
   for (int i = 0; i < 3; i++) gSum[i] = gSumSq[i] = aSum[i] = 0.0;
+}
+
+// CALIBRATE: redo the static gyro-bias calibration (table must stay still). Idle only.
+static void startCalibration(CommandLink& from) {
+  if (state != State::Idle) {
+    from.send("# CALIBRATE REFUSED: not idle\n");
+    return;
+  }
+  state = State::Calibrating;
+  haveLastGyro = false;
+  resetCalibration();
+  char msg[72];
+  snprintf(msg, sizeof(msg), "# CALIBRATING: hold the table still for %lu s\n",
+           (unsigned long)(params::kCalDurationMs / 1000));
+  sayAll(msg);
+}
+
+// Track the BNO085's gyro report sequence numbers and arrival gaps.
+static void trackGyroSequence(const ImuSample& s) {
+  if (haveGyroSeq) {
+    const uint8_t dseq = (uint8_t)(s.seq - lastGyroSeq);  // wraps mod 256
+    const float gapMs = (uint32_t)(s.t_us - lastGyroSeqUs) * 1.0e-3f;
+    if (dseq > 1) seqMissed += dseq - 1;
+    if (gapMs > params::kImuGapMs && dseq == 1) chipGaps++;
+    if (gapMs > maxGyroGapMs) maxGyroGapMs = gapMs;
+  }
+  lastGyroSeq = s.seq;
+  lastGyroSeqUs = s.t_us;
+  haveGyroSeq = true;
 }
 
 // Wheel speed as the active loop sees it: low-passed in Manual, raw filter otherwise.
@@ -253,6 +290,8 @@ static void logData(uint32_t sampleUs) {
   r.sigmaDeg = ekf.sigmaRad() * kRadToDeg;
   r.accelStatus = static_cast<int>(lastAccelResult);
   r.state = stateChar();
+  r.gyroSeq = lastGyroSeq;
+  r.seqMissed = seqMissed;
   if (demo.active()) {
     r.demoPhase = demo.phaseChar();
     r.rateRef = demo.rateRef();
@@ -276,17 +315,22 @@ static void handleCommand(const Command& c, CommandLink& from) {
     case Cmd::Status: {
       const Vec3 e = ekf.eulerRad() * kRadToDeg;
       const Vec3 s = ekf.sigmaRad() * kRadToDeg;
-      char msg[160];
+      char msg[192];
       snprintf(msg, sizeof(msg),
-               "S,%c,%.1f,%.1f,%.1f,sig_yaw=%.2f,%.0f,%.0f,%.0f,%.0f,sd=%s,drop=%lu,demo=%c\n", stateChar(),
-               e.x, e.y, e.z, s.z, wheels[0].speed(), wheels[1].speed(), wheels[2].speed(),
+               "S,%c,%.1f,%.1f,%.1f,sig_yaw=%.2f,%.0f,%.0f,%.0f,%.0f,sd=%s,drop=%lu,demo=%c,"
+               "miss=%lu,chipgap=%lu,maxgap=%.0f\n",
+               stateChar(), e.x, e.y, e.z, s.z, wheels[0].speed(), wheels[1].speed(), wheels[2].speed(),
                wheels[3].speed(), logger.sdActive() ? logger.fileName() : "off",
-               (unsigned long)logger.droppedRows(), demo.phaseChar());
+               (unsigned long)logger.droppedRows(), demo.phaseChar(), (unsigned long)seqMissed,
+               (unsigned long)chipGaps, maxGyroGapMs);
       from.send(msg);
       break;
     }
     case Cmd::DemoSpin:
       startDemo(from);
+      break;
+    case Cmd::Calibrate:
+      startCalibration(from);
       break;
     case Cmd::Stop:
       stopDemo(from);
@@ -524,10 +568,20 @@ static void handleCalibrationSample(const ImuSample& s) {
     aSum[2] += s.v.z;
   }
 
-  if (millis() - calStartMs < kCalDurationMs) return;
+  const uint32_t elapsed = millis() - calStartMs;
+  if (elapsed < params::kCalDurationMs) {
+    if (millis() - calProgressMs >= params::kCalProgressMs) {
+      calProgressMs = millis();
+      char msg[56];
+      snprintf(msg, sizeof(msg), "# calibrating: %lu / %lu s, keep still\n", (unsigned long)(elapsed / 1000),
+               (unsigned long)(params::kCalDurationMs / 1000));
+      sayAll(msg);
+    }
+    return;
+  }
 
   if (calGyroN < kMinCalSamples || calAccelN < kMinCalSamples / 2) {
-    Serial.println("# calibration: too few IMU samples, retrying");
+    sayAll("# calibration: too few IMU samples, retrying\n");
     resetCalibration();
     return;
   }
@@ -545,7 +599,7 @@ static void handleCalibrationSample(const ImuSample& s) {
   const bool still = stdv.x < kCalMaxGyroStd && stdv.y < kCalMaxGyroStd &&
                      stdv.z < kCalMaxGyroStd && norm(mean) < kCalMaxGyroMean;
   if (!still) {
-    Serial.println("# calibration: table is moving, HOLD STILL - restarting");
+    sayAll("# calibration: table is moving, HOLD STILL - restarting\n");
     resetCalibration();
     return;
   }
@@ -558,13 +612,16 @@ static void handleCalibrationSample(const ImuSample& s) {
   const float biasSigma = worst / sqrtf((float)calGyroN);  // std error of the mean
 
   if (!ekf.initialize(accelMean, mean, biasSigma)) {
-    Serial.println("# calibration: bad gravity vector, retrying");
+    sayAll("# calibration: bad gravity vector, retrying\n");
     resetCalibration();
     return;
   }
 
-  Serial.printf("# calibrated: bias[deg/s]=%.4f,%.4f,%.4f  (N=%lu)\n", mean.x * kRadToDeg,
-                mean.y * kRadToDeg, mean.z * kRadToDeg, (unsigned long)calGyroN);
+  char msg[96];
+  snprintf(msg, sizeof(msg), "# calibrated: bias[deg/s]=%.4f,%.4f,%.4f (N=%lu, %lu s)\n", mean.x * kRadToDeg,
+           mean.y * kRadToDeg, mean.z * kRadToDeg, (unsigned long)calGyroN,
+           (unsigned long)(params::kCalDurationMs / 1000));
+  sayAll(msg);
   Serial.println(
       "# t_ms,qw,qx,qy,qz,roll,pitch,yaw,bx,by,bz,sig_roll,sig_pitch,sig_yaw,accel_status,w0,w1,w2,w3,state,"
       "dutyA,dutyB,dutyC,dutyD");
@@ -595,7 +652,12 @@ void setup() {
       delay(1000);  // halt in setup only; loop() stays non-blocking
     }
   }
-  Serial.println("# BNO085 ready. HOLD THE TABLE STILL for calibration.");
+  {
+    char msg[72];
+    snprintf(msg, sizeof(msg), "# BNO085 ready. HOLD THE TABLE STILL for %lu s calibration.\n",
+             (unsigned long)(params::kCalDurationMs / 1000));
+    sayAll(msg);
+  }
   resetCalibration();
   lastGyroMs = millis();
   lastWheelUs = micros();
@@ -607,8 +669,10 @@ void loop() {
   // Drain everything the IMU has queued, in arrival order.
   ImuSample s;
   while (imu.poll(s)) {
-    if (s.kind == ImuSample::Gyro) latestGyro = s.v;
-    else if (s.kind == ImuSample::Accel) latestAccel = s.v;
+    if (s.kind == ImuSample::Gyro) {
+      latestGyro = s.v;
+      trackGyroSequence(s);
+    } else if (s.kind == ImuSample::Accel) latestAccel = s.v;
     else if (s.kind == ImuSample::Mag) latestMag = s.v;  // logged only, never fused
 
     if (state == State::Calibrating) {

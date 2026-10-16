@@ -24,6 +24,7 @@ bool Bno085Imu::poll(ImuSample& out) {
   if (!bno_.getSensorEvent(&value_)) return false;
 
   const uint32_t now = micros();
+  out.seq = value_.sequence;
   switch (value_.sensorId) {
     case SH2_GYROSCOPE_UNCALIBRATED:
       out.kind = ImuSample::Gyro;

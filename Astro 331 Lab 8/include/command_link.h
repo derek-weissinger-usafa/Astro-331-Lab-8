@@ -19,8 +19,9 @@
 //                  spin down over 10 s, settle 3 s, then Idle. From Idle only, wheels stopped.
 //   STOP           controlled end of the demo (spin down from the current rate); KILL is the
 //                  emergency stop (brakes the wheels, which also stops the table abruptly)
+//   CALIBRATE      redo the static gyro-bias calibration (Idle only; keep still kCalDurationMs)
 enum class Cmd : uint8_t { None, Arm, Disarm, Kill, Status, Ping, Test, Speed, Counts, Zero,
-                           BeginStatic, DemoSpin, Stop, Unknown };
+                           BeginStatic, DemoSpin, Stop, Calibrate, Unknown };
 
 struct Command {
   static constexpr int kAllWheels = 4;
