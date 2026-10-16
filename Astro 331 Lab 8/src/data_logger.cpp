@@ -8,7 +8,9 @@ static const char kHeader[] =
     "mcutime_ms,gyro_x_rad_s,gyro_y_rad_s,gyro_z_rad_s,accel_x_m_s2,accel_y_m_s2,accel_z_m_s2,"
     "mag_x_uT,mag_y_uT,mag_z_uT,motor_a_measured_rate_rpm,motor_b_measured_rate_rpm,"
     "motor_c_measured_rate_rpm,motor_d_measured_rate_rpm,"
-    "motor_a_duty,motor_b_duty,motor_c_duty,motor_d_duty\n";
+    "motor_a_duty,motor_b_duty,motor_c_duty,motor_d_duty,"
+    "qw,qx,qy,qz,roll_deg,pitch_deg,yaw_deg,bias_x_rad_s,bias_y_rad_s,bias_z_rad_s,"
+    "sig_roll_deg,sig_pitch_deg,sig_yaw_deg,accel_status,state,demo_phase,rate_ref_rad_s,yaw_ref_deg\n";
 
 void DataLogger::say(const char* msg) {
   const size_t n = strlen(msg);
@@ -18,44 +20,56 @@ void DataLogger::say(const char* msg) {
 
 bool DataLogger::begin() {
   sd_ = false;
-  if (!SD.begin(BUILTIN_SDCARD)) {
-    say("# SD: not available (no card?) - radio only\n");
-  } else {
-    for (int i = 1; i <= 9999; i++) {
-      snprintf(name_, sizeof(name_), "LOG_%04d.CSV", i);
-      if (!SD.exists(name_)) break;
-      if (i == 9999) name_[0] = '\0';  // all names used
-    }
-    if (name_[0] != '\0') file_ = SD.open(name_, FILE_WRITE);
-    if (name_[0] == '\0' || !file_) {
-      say("# SD: could not create a log file - radio only\n");
-      name_[0] = '\0';
-    } else {
-      sd_ = true;
-      char msg[48];
-      snprintf(msg, sizeof(msg), "# SD: logging to %s\n", name_);
-      say(msg);
-    }
+  card_ = SD.begin(BUILTIN_SDCARD);
+  say(card_ ? "# SD: card ready. Send BEGIN STATIC TEST to start logging.\n"
+            : "# SD: not available (no card?)\n");
+
+  const size_t h = sizeof(kHeader) - 1;
+  if ((size_t)radio_.availableForWrite() >= h) radio_.write((const uint8_t*)kHeader, h);
+  return card_;
+}
+
+bool DataLogger::startFile(const char* prefix) {
+  if (sd_) return true;
+  if (!card_) card_ = SD.begin(BUILTIN_SDCARD);  // card may have been inserted after boot
+  if (!card_) {
+    say("# SD: not available (no card?)\n");
+    return false;
+  }
+
+  name_[0] = '\0';
+  for (int i = 1; i <= 9999; i++) {
+    snprintf(name_, sizeof(name_), "%s_%04d.CSV", prefix, i);
+    if (!SD.exists(name_)) break;
+    if (i == 9999) name_[0] = '\0';  // all names used
+  }
+  if (name_[0] != '\0') file_ = SD.open(name_, FILE_WRITE);
+  if (name_[0] == '\0' || !file_) {
+    name_[0] = '\0';
+    say("# SD: could not create a log file\n");
+    return false;
   }
 
   const size_t h = sizeof(kHeader) - 1;
-  if (sd_) {
-    memcpy(buf_, kHeader, h);
-    len_ = h;
-  }
-  if ((size_t)radio_.availableForWrite() >= h) radio_.write((const uint8_t*)kHeader, h);
+  memcpy(buf_, kHeader, h);
+  len_ = h;
+  dropped_ = 0;
+  sd_ = true;
   lastFlushMs_ = millis();
-  return sd_;
+  return true;
 }
 
 void DataLogger::logRow(const LogRow& r) {
-  char line[192];
+  char line[384];
   const int n = snprintf(
       line, sizeof(line),
-      "%lu,%.5f,%.5f,%.5f,%.3f,%.3f,%.3f,%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.1f,%.3f,%.3f,%.3f,%.3f\n",
-      (unsigned long)r.ms, r.gyro.x, r.gyro.y, r.gyro.z, r.accel.x, r.accel.y, r.accel.z, r.mag.x,
-      r.mag.y, r.mag.z, r.rpm[0], r.rpm[1], r.rpm[2], r.rpm[3], r.duty[0], r.duty[1], r.duty[2],
-      r.duty[3]);
+      "%.3f,%.5f,%.5f,%.5f,%.3f,%.3f,%.3f,%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.1f,%.3f,%.3f,%.3f,%.3f,"
+      "%.6f,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%d,%c,%c,%.4f,%.3f\n",
+      r.ms, r.gyro.x, r.gyro.y, r.gyro.z, r.accel.x, r.accel.y, r.accel.z, r.mag.x, r.mag.y,
+      r.mag.z, r.rpm[0], r.rpm[1], r.rpm[2], r.rpm[3], r.duty[0], r.duty[1], r.duty[2], r.duty[3],
+      r.q.w, r.q.x, r.q.y, r.q.z, r.eulerDeg.x, r.eulerDeg.y, r.eulerDeg.z, r.bias.x, r.bias.y,
+      r.bias.z, r.sigmaDeg.x, r.sigmaDeg.y, r.sigmaDeg.z, r.accelStatus, r.state, r.demoPhase,
+      r.rateRef, r.yawRefDeg);
   if (n <= 0 || n >= (int)sizeof(line)) return;
 
   if (sd_) {

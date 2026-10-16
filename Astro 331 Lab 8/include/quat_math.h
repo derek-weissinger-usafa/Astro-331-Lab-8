@@ -127,6 +127,15 @@ inline Quat qFromRotVec(const Vec3& r) {
   return {cosf(0.5f * ang), r.x * s, r.y * s, r.z * s};
 }
 
+// Inverse of qFromRotVec: rotation vector (axis * angle, rad) of q, taking the short way round.
+inline Vec3 qToRotVec(const Quat& qIn) {
+  Quat q = qIn.w < 0.0f ? Quat{-qIn.w, -qIn.x, -qIn.y, -qIn.z} : qIn;
+  const float s = sqrtf(q.x * q.x + q.y * q.y + q.z * q.z);
+  if (s < 1e-8f) return {2.0f * q.x, 2.0f * q.y, 2.0f * q.z};
+  const float k = 2.0f * atan2f(s, q.w) / s;
+  return {q.x * k, q.y * k, q.z * k};
+}
+
 // Rotation matrix A(q) with v_body = A * v_inertial (q is inertial -> body).
 inline Mat<3, 3> qToMatrix(const Quat& q) {
   const float w = q.w, x = q.x, y = q.y, z = q.z;

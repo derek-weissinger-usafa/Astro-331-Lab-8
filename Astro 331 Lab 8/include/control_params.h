@@ -7,9 +7,15 @@
 // replaced by measured values (inertias) or tuned on hardware (gains, limits).
 namespace params {
 
-// ---- Plant (TODO: measure/estimate; the old Inertia.mat is for previous hardware) ----
-constexpr float kBodyInertia[3] = {0.05f, 0.05f, 0.05f};  // kg m^2, about body x, y, z
-constexpr float kWheelInertia = 2.0e-4f;                  // kg m^2, axial, per wheel
+// ---- Plant ----
+// Table: working MODEL until measured. Hollow PLA cube (15 in side, 1 in wall) scaled uniformly
+// to 5 kg => ~8.9 in side, 0.59 in wall, I = m a^2/6 shell => 0.0623 kg m^2 about each axis.
+constexpr float kBodyInertia[3] = {0.0623f, 0.0623f, 0.0623f};  // kg m^2, about body x, y, z
+// Wheel: from CAD "CAD files V2/ReactionWheel V2.f3d", aluminium 2700 kg/m^3: 161 g, rim
+// r 4-5 cm x 1.9 cm (97% of J), 4 mm hub plate, four 8 mm spokes.
+// TODO (rotor momentum): the motor rotor spins 6.25x faster than the wheel and adds roughly
+// N * J_rotor to each wheel's momentum (a few percent). Not modelled yet; it only adds margin.
+constexpr float kWheelInertia = 3.06e-4f;                 // kg m^2, axial, per wheel
 
 // ---- Attitude loop ----
 // Kp = I wn^2, Kd = 2 zeta I wn per axis. Hold target: level, yaw 0 (+/-5 deg spec).
@@ -73,8 +79,9 @@ constexpr uint32_t kImuTimeoutMs = 100;
 
 // ---- Data log (SD card + XBee) / telemetry / bench ----
 constexpr uint32_t kXbeeBaud = 9600;       // ~960 B/s budget
-constexpr float kLogHz = 20.0f;            // SD rows per second
-constexpr uint32_t kXbeeLogDecimation = 4; // every 4th SD row to the XBee (5 Hz, ~500 B/s)
+// One log row per gyro sample (~100 Hz). Rows are ~230-260 B, so the 9600-baud XBee gets
+// every 50th row (~2 Hz, ~500 B/s) to leave room for command replies.
+constexpr uint32_t kXbeeLogDecimation = 50;
 constexpr uint32_t kSdFlushMs = 1000;      // max data lost on power cut
 constexpr uint32_t kUsbTelemetryMs = 50;
 constexpr float kTestMaxDuty = 0.5f;
@@ -83,5 +90,21 @@ constexpr float kManualAccelRadS2 = 20.0f;  // SPEED setpoint ramp rate (~190 rp
 // Extra first-order low-pass on measured wheel speed, Manual mode only (speed loop + USB
 // telemetry). Larger = smoother but more lag (more overshoot risk). 0 disables it.
 constexpr float kManualSpeedLpfTauS = 0.1f;
+
+// ---- Demo: level, then spin counter-clockwise about +z (XBee "DEMO SPIN", "STOP") ----
+// Requested 30 rpm, but the rate actually used is capped by the wheels' z-momentum budget:
+//   rate = margin * sum(a_i.z) * J * kWheelMaxSpeedRadS / I_zz   (~0.67 rad/s = 6.4 rpm here)
+constexpr float kDemoRequestedRateRadS = 3.14159265f;  // 30 rpm
+constexpr float kDemoMomentumMargin = 0.8f;    // leave 20% for levelling, drag, tracking error
+constexpr float kDemoLevelRateRadS = 0.1f;     // max reference tilt rate while levelling (~6 deg/s)
+constexpr float kDemoLevelMinS = 2.0f;         // shortest levelling slew
+constexpr float kDemoLevelTolDeg = 1.0f;       // "level" = |roll|,|pitch| below this ...
+constexpr float kDemoLevelHoldS = 3.0f;        // ... continuously for this long
+constexpr float kDemoLevelTimeoutS = 20.0f;    // after the slew; then abort
+constexpr float kDemoRampS = 10.0f;            // spin-up and spin-down duration
+constexpr float kDemoHoldS = 10.0f;            // constant-rate hold
+constexpr float kDemoSettleS = 3.0f;           // hold heading at rest before returning to Idle
+constexpr float kDemoStartMaxWheelRadS = 2.0f; // wheels must be ~stopped to start
+constexpr float kDemoWheelAbortRadS = 55.0f;   // any wheel above this => spin down early
 
 }  // namespace params

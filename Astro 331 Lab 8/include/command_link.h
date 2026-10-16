@@ -12,7 +12,15 @@
 //                          enters Manual). DISARM/KILL stops all wheels and returns to Idle.
 //   COUNTS         raw encoder counts per wheel since the last ZERO (+ output turns at kEncoderCountsPerRev)
 //   ZERO           zero the COUNTS readout (any state; does not affect speed or control)
-enum class Cmd : uint8_t { None, Arm, Disarm, Kill, Status, Ping, Test, Speed, Counts, Zero, Unknown };
+//   BEGIN STATIC TEST  start logging every row to a new STATIC_####.CSV on the SD card until
+//                      power is removed (refused while calibrating; repeat just reports the file)
+//   DEMO SPIN      demo: level from <=30 deg tilt (keeping heading), spin up CCW about +z over
+//                  10 s to the highest rate the wheels' momentum allows (<= 30 rpm), hold 10 s,
+//                  spin down over 10 s, settle 3 s, then Idle. From Idle only, wheels stopped.
+//   STOP           controlled end of the demo (spin down from the current rate); KILL is the
+//                  emergency stop (brakes the wheels, which also stops the table abruptly)
+enum class Cmd : uint8_t { None, Arm, Disarm, Kill, Status, Ping, Test, Speed, Counts, Zero,
+                           BeginStatic, DemoSpin, Stop, Unknown };
 
 struct Command {
   static constexpr int kAllWheels = 4;

@@ -26,6 +26,15 @@ static Command parseLine(char* line) {
     c.cmd = Cmd::Counts;
   } else if (!strcmp(tok, "ZERO")) {
     c.cmd = Cmd::Zero;
+  } else if (!strcmp(tok, "STOP")) {
+    c.cmd = Cmd::Stop;
+  } else if (!strcmp(tok, "DEMO")) {
+    char* a = strtok_r(nullptr, " \t,", &save);
+    c.cmd = (a && !strcmp(a, "SPIN")) ? Cmd::DemoSpin : Cmd::Unknown;
+  } else if (!strcmp(tok, "BEGIN")) {
+    char* a = strtok_r(nullptr, " \t,", &save);
+    char* b = strtok_r(nullptr, " \t,", &save);
+    c.cmd = (a && b && !strcmp(a, "STATIC") && !strcmp(b, "TEST")) ? Cmd::BeginStatic : Cmd::Unknown;
   } else if (!strcmp(tok, "TEST")) {
     char* w = strtok_r(nullptr, " \t,", &save);
     char* d = strtok_r(nullptr, " \t,", &save);

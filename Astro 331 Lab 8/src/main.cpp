@@ -5,6 +5,7 @@
 #include "command_link.h"
 #include "control_params.h"
 #include "data_logger.h"
+#include "demo_spin.h"
 #include "frames.h"
 #include "imu_bno085.h"
 #include "pins.h"
@@ -15,8 +16,10 @@
 // Reaction-wheel attitude hold (level, yaw 0) on a BNO085 gyro+accel MEKF.
 // States: Calibrating (hold still, ~3 s) -> Idle (wheels off) -> Armed (hold).
 // Commands arrive over the XBee (Serial8) and, for bench use, USB Serial.
-// Sensors and control run at 100 Hz; raw data is logged at 20 Hz to the SD card
-// and every 4th row of that goes out over the XBee (data_logger.h).
+// Sensors and control run at 100 Hz. One data row per gyro sample (~100 Hz) streams to the
+// XBee (every kXbeeLogDecimation-th row) and, after "BEGIN STATIC TEST", to an SD file until
+// power is removed (data_logger.h). No SD file is created at boot.
+// "DEMO SPIN" runs the level-then-spin demonstration (demo_spin.h) in the Armed state.
 
 using namespace wheel_geometry;
 
@@ -26,6 +29,7 @@ static AttitudeController ctrl;
 static CommandLink xbee(XBEE_SERIAL);
 static CommandLink usb(Serial);
 static DataLogger logger(XBEE_SERIAL);
+static DemoSpin demo;
 
 // Serial8's built-in TX buffer is only 40 bytes; without this, any line longer than
 // that (data rows, STATUS replies) is always dropped by the non-blocking senders.
@@ -71,7 +75,11 @@ static double gSum[3], gSumSq[3], aSum[3];
 
 static uint32_t lastGyroUs = 0, lastGyroMs = 0;
 static bool haveLastGyro = false;
-static uint32_t lastUsbMs = 0, lastWheelUs = 0, lastLogUs = 0;
+static uint32_t lastUsbMs = 0, lastWheelUs = 0;
+// 64-bit sample clock for log timestamps (micros() wraps every ~71.6 min).
+static uint64_t logClockUs = 0;
+static uint32_t logLastRawUs = 0;
+static bool logClockStarted = false;
 static AccelResult lastAccelResult = AccelResult::Applied;
 
 // Latest raw sensor values, for the data log (updated in every state).
@@ -94,6 +102,7 @@ static void stopAllWheels() {
 static void disarm(const char* reason) {
   stopAllWheels();
   testWheel = -1;
+  demo.abort();
   if (state == State::Armed || state == State::Manual) state = State::Idle;
   char msg[48];
   snprintf(msg, sizeof(msg), "# DISARM %s\n", reason);
@@ -121,6 +130,80 @@ static void arm(CommandLink& from) {
   sayAll("# ARMED\n");
 }
 
+// Total wheel angular momentum in the body frame: h = sum a_i J (w_i + a_i . omega).
+static Vec3 wheelMomentum(const Vec3& omega) {
+  Vec3 h{0, 0, 0};
+  for (int i = 0; i < kN; i++) {
+    const Vec3 a = axis(i);
+    h = h + a * (params::kWheelInertia * (wheels[i].speed() + dot(a, omega)));
+  }
+  return h;
+}
+
+// Highest demo yaw rate the wheels can absorb: margin * sum(a_i.z) J w_max / I_zz, capped at
+// the requested 30 rpm. Only enabled wheels count.
+static float demoTargetRate() {
+  float az = 0.0f;
+  for (int i = 0; i < kN; i++)
+    if (wheelEnabled[i]) az += fabsf(axis(i).z);
+  const float cap = params::kDemoMomentumMargin * az * params::kWheelInertia *
+                    params::kWheelMaxSpeedRadS / params::kBodyInertia[2];
+  return cap < params::kDemoRequestedRateRadS ? cap : params::kDemoRequestedRateRadS;
+}
+
+static void startDemo(CommandLink& from) {
+  if (state != State::Idle) {
+    from.send("# DEMO REFUSED: not idle (wait for calibration / DISARM first)\n");
+    return;
+  }
+  const Vec3 e = ekf.eulerRad();
+  const float lim = params::kMaxTiltDeg * kDegToRad;
+  if (fabsf(e.x) > lim || fabsf(e.y) > lim) {
+    from.send("# DEMO REFUSED: tilt over 30 deg\n");
+    return;
+  }
+  for (int i = 0; i < kN; i++) {
+    if (fabsf(wheels[i].speed()) > params::kDemoStartMaxWheelRadS) {
+      from.send("# DEMO REFUSED: wheels still turning\n");
+      return;
+    }
+  }
+  if (!logger.sdActive()) logger.startFile("DEMO");  // record the run if nothing is logging yet
+
+  const float rate = demoTargetRate();
+  ctrl.reset();
+  demo.start(ekf.quaternion(), rate);
+  ctrl.setTrajectory(demo.ref().q, demo.ref().w, demo.ref().a);
+  for (int i = 0; i < kN; i++) {
+    speedLoops[i].reset();
+    wheelCmd[i] = wheels[i].speed();
+  }
+  state = State::Armed;
+  char msg[128];
+  snprintf(msg, sizeof(msg), "# DEMO START: leveling, then spin CCW to %.2f rad/s (%.1f rpm)%s%s\n", rate,
+           rate * 60.0f / 6.2831853f, logger.sdActive() ? ", log " : "",
+           logger.sdActive() ? logger.fileName() : "");
+  sayAll(msg);
+}
+
+static void stopDemo(CommandLink& from) {
+  if (!demo.active()) {
+    from.send("# STOP: no demo running\n");
+    return;
+  }
+  switch (demo.requestStop()) {
+    case DemoSpin::Event::Complete:
+      disarm("DEMO_STOPPED");  // stopped while leveling: nothing is spinning
+      break;
+    case DemoSpin::Event::SpinDownStarted:
+      sayAll("# DEMO STOP: spinning down\n");
+      break;
+    default:
+      from.send("# STOP: already spinning down\n");
+      break;
+  }
+}
+
 static void resetCalibration() {
   calStartMs = millis();
   calGyroN = calAccelN = 0;
@@ -144,9 +227,18 @@ static void printUsbTelemetry() {
       wheels[3].axisDuty());
 }
 
-static void logData() {
+// One log row per gyro sample, stamped with that sample's arrival time.
+static void logData(uint32_t sampleUs) {
+  if (!logClockStarted) {
+    logClockUs = sampleUs;
+    logClockStarted = true;
+  } else {
+    logClockUs += (uint32_t)(sampleUs - logLastRawUs);  // wrap-safe delta
+  }
+  logLastRawUs = sampleUs;
+
   LogRow r;
-  r.ms = millis();
+  r.ms = (double)logClockUs * 1.0e-3;
   r.gyro = latestGyro;
   r.accel = latestAccel;
   r.mag = latestMag;
@@ -154,6 +246,17 @@ static void logData() {
   for (int i = 0; i < kN; i++) {
     r.rpm[i] = wheels[i].speed() * kRadSToRpm;
     r.duty[i] = wheels[i].axisDuty();
+  }
+  r.q = ekf.quaternion();
+  r.eulerDeg = ekf.eulerRad() * kRadToDeg;
+  r.bias = ekf.gyroBias();
+  r.sigmaDeg = ekf.sigmaRad() * kRadToDeg;
+  r.accelStatus = static_cast<int>(lastAccelResult);
+  r.state = stateChar();
+  if (demo.active()) {
+    r.demoPhase = demo.phaseChar();
+    r.rateRef = demo.rateRef();
+    r.yawRefDeg = demo.yawRef() * kRadToDeg;
   }
   logger.logRow(r);
 }
@@ -173,11 +276,37 @@ static void handleCommand(const Command& c, CommandLink& from) {
     case Cmd::Status: {
       const Vec3 e = ekf.eulerRad() * kRadToDeg;
       const Vec3 s = ekf.sigmaRad() * kRadToDeg;
-      char msg[96];
-      snprintf(msg, sizeof(msg), "S,%c,%.1f,%.1f,%.1f,sig_yaw=%.2f,%.0f,%.0f,%.0f,%.0f\n", stateChar(),
+      char msg[160];
+      snprintf(msg, sizeof(msg),
+               "S,%c,%.1f,%.1f,%.1f,sig_yaw=%.2f,%.0f,%.0f,%.0f,%.0f,sd=%s,drop=%lu,demo=%c\n", stateChar(),
                e.x, e.y, e.z, s.z, wheels[0].speed(), wheels[1].speed(), wheels[2].speed(),
-               wheels[3].speed());
+               wheels[3].speed(), logger.sdActive() ? logger.fileName() : "off",
+               (unsigned long)logger.droppedRows(), demo.phaseChar());
       from.send(msg);
+      break;
+    }
+    case Cmd::DemoSpin:
+      startDemo(from);
+      break;
+    case Cmd::Stop:
+      stopDemo(from);
+      break;
+    case Cmd::BeginStatic: {
+      if (state == State::Calibrating) {
+        from.send("# BEGIN REFUSED: still calibrating - keep the table still and retry\n");
+        break;
+      }
+      char msg[96];
+      if (logger.sdActive()) {
+        snprintf(msg, sizeof(msg), "# STATIC TEST already running: %s\n", logger.fileName());
+        from.send(msg);
+        break;
+      }
+      if (logger.startFile("STATIC")) {  // on failure startFile reports the reason itself
+        snprintf(msg, sizeof(msg), "# STATIC TEST STARTED: logging 100 Hz to %s until power off\n",
+                 logger.fileName());
+        sayAll(msg);
+      }
       break;
     }
     case Cmd::Test: {
@@ -263,7 +392,50 @@ static void controlStep(float dt) {
     return;
   }
 
-  const Vec3 tau = ctrl.update(ekf.quaternion(), ekf.bodyRate(), dt);
+  if (demo.active()) {
+    const Vec3 e = ekf.eulerRad();
+    switch (demo.step(dt, e.x, e.y)) {
+      case DemoSpin::Event::Leveled: {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "# DEMO LEVEL: spinning up to %.1f rpm\n",
+                 demo.targetRate() * 60.0f / 6.2831853f);
+        sayAll(msg);
+        break;
+      }
+      case DemoSpin::Event::LevelTimeout:
+        disarm("DEMO_LEVEL_TIMEOUT");
+        return;
+      case DemoSpin::Event::HoldStarted:
+        sayAll("# DEMO HOLD\n");
+        break;
+      case DemoSpin::Event::SpinDownStarted:
+        sayAll("# DEMO SPIN DOWN\n");
+        break;
+      case DemoSpin::Event::Settling:
+        sayAll("# DEMO SETTLE\n");
+        break;
+      case DemoSpin::Event::Complete:
+        disarm("DEMO_COMPLETE");
+        return;
+      default:
+        break;
+    }
+    // Momentum budget guard: a wheel near its cap means the inertia model is off (or drag).
+    float wmax = 0.0f;
+    for (int i = 0; i < kN; i++) wmax = fmaxf(wmax, fabsf(wheels[i].speed()));
+    if (wmax > params::kDemoWheelAbortRadS) {
+      if (demo.phase() == DemoPhase::Level) {
+        disarm("DEMO_WHEEL_LIMIT");
+        return;
+      }
+      if (demo.requestStop() == DemoSpin::Event::SpinDownStarted)
+        sayAll("# DEMO ABORT: wheel near limit, spinning down\n");
+    }
+    ctrl.setTrajectory(demo.ref().q, demo.ref().w, demo.ref().a);
+  }
+
+  const Vec3 omega = ekf.bodyRate();
+  const Vec3 tau = ctrl.update(ekf.quaternion(), omega, dt, wheelMomentum(omega));
 
   float u[kN];
   if (!allocate(tau, wheelEnabled, u)) {
@@ -426,7 +598,7 @@ void setup() {
   Serial.println("# BNO085 ready. HOLD THE TABLE STILL for calibration.");
   resetCalibration();
   lastGyroMs = millis();
-  lastWheelUs = lastLogUs = micros();
+  lastWheelUs = micros();
 }
 
 void loop() {
@@ -441,7 +613,10 @@ void loop() {
 
     if (state == State::Calibrating) {
       handleCalibrationSample(s);
-      if (s.kind == ImuSample::Gyro) lastGyroMs = millis();
+      if (s.kind == ImuSample::Gyro) {
+        lastGyroMs = millis();
+        logData(s.t_us);
+      }
       continue;
     }
 
@@ -456,6 +631,7 @@ void loop() {
       }
       lastGyroUs = s.t_us;
       haveLastGyro = true;
+      logData(s.t_us);
     } else if (s.kind == ImuSample::Accel) {
       lastAccelResult = ekf.updateAccel(s.v);
     }
@@ -470,14 +646,7 @@ void loop() {
     lastWheelUs = nowUs;
   }
 
-  // Data log runs in every state (calibration included) so each run is fully captured.
-  const uint32_t logPeriodUs = (uint32_t)(1.0e6f / params::kLogHz);
-  if ((uint32_t)(nowUs - lastLogUs) >= logPeriodUs) {
-    lastLogUs += logPeriodUs;
-    if ((uint32_t)(nowUs - lastLogUs) >= logPeriodUs) lastLogUs = nowUs;  // fell behind: resync
-    logData();
-  }
-  logger.service();
+  logger.service();  // rows are produced per gyro sample above
 
   if (state != State::Calibrating && millis() - lastUsbMs >= params::kUsbTelemetryMs) {
     lastUsbMs = millis();
