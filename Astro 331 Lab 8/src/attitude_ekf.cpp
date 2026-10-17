@@ -48,9 +48,10 @@ void AttitudeEKF::predict(const Vec3& gyro, float dt) {
   Mat<6, 6> Qd;
   const float qa = p_.gyroNoise * p_.gyroNoise * dt;
   const float qb = p_.gyroBiasWalk * p_.gyroBiasWalk * dt;
+  const float qbz = p_.gyroBiasWalkZ * p_.gyroBiasWalkZ * dt;
   for (int i = 0; i < 3; i++) {
     Qd(i, i) = qa;
-    Qd(3 + i, 3 + i) = qb;
+    Qd(3 + i, 3 + i) = (i == 2) ? qbz : qb;
   }
 
   P_ = Phi * P_ * transpose(Phi) + Qd;
@@ -87,7 +88,11 @@ AccelResult AttitudeEKF::updateAccel(const Vec3& accel) {
   const Mat<3, 3> S = H * PHt + R;
   Mat<3, 3> Sinv;
   if (!inverse3(S, Sinv)) return AccelResult::Singular;
-  const Mat<6, 3> K = PHt * Sinv;
+  Mat<6, 3> K = PHt * Sinv;
+  // Keep the z bias at its calibrated value: zero its gain row. The Joseph-form update below
+  // stays a valid covariance for this (deliberately suboptimal) gain.
+  if (p_.lockZBias)
+    for (int j = 0; j < 3; j++) K(5, j) = 0.0f;
 
   // Error-state correction
   float dx[6];

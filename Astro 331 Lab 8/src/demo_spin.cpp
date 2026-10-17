@@ -143,6 +143,20 @@ DemoSpin::Event DemoSpin::requestStop() {
   }
 }
 
+float DemoSpin::wheelBias() const {
+  switch (phase_) {
+    case DemoPhase::Off:
+      return 0.0f;
+    case DemoPhase::Settle: {
+      const float ramp = 0.8f * params::kDemoSettleS;  // reach 0 before the phase ends
+      const float f = 1.0f - t_ / ramp;
+      return f > 0.0f ? params::kDemoWheelBiasRadS * f : 0.0f;
+    }
+    default:
+      return params::kDemoWheelBiasRadS;
+  }
+}
+
 char DemoSpin::phaseChar() const {
   switch (phase_) {
     case DemoPhase::Level: return 'L';

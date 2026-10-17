@@ -28,8 +28,16 @@ static Command parseLine(char* line) {
     c.cmd = Cmd::Zero;
   } else if (!strcmp(tok, "CALIBRATE")) {
     c.cmd = Cmd::Calibrate;
+    char* v = strtok_r(nullptr, " \t,", &save);
+    if (v) {
+      c.value = (float)atof(v);
+      c.hasValue = true;
+    }
   } else if (!strcmp(tok, "STOP")) {
     c.cmd = Cmd::Stop;
+  } else if (!strcmp(tok, "MAG")) {
+    char* a = strtok_r(nullptr, " \t,", &save);
+    c.cmd = (a && !strcmp(a, "MAP")) ? Cmd::MagMap : Cmd::Unknown;
   } else if (!strcmp(tok, "DEMO")) {
     char* a = strtok_r(nullptr, " \t,", &save);
     c.cmd = (a && !strcmp(a, "SPIN")) ? Cmd::DemoSpin : Cmd::Unknown;
@@ -37,6 +45,11 @@ static Command parseLine(char* line) {
     char* a = strtok_r(nullptr, " \t,", &save);
     char* b = strtok_r(nullptr, " \t,", &save);
     c.cmd = (a && b && !strcmp(a, "STATIC") && !strcmp(b, "TEST")) ? Cmd::BeginStatic : Cmd::Unknown;
+    char* v = strtok_r(nullptr, " \t,", &save);
+    if (c.cmd == Cmd::BeginStatic && v) {
+      c.value = (float)atof(v);
+      c.hasValue = true;
+    }
   } else if (!strcmp(tok, "TEST")) {
     char* w = strtok_r(nullptr, " \t,", &save);
     char* d = strtok_r(nullptr, " \t,", &save);

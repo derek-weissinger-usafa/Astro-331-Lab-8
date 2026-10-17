@@ -48,6 +48,14 @@ Background on earlier findings: `HANDOFF_2026-10-15.md`. Commands and firmware d
 - [ ] 🔧 **Measure the real table** mass and, if possible, inertia (CAD or swing test). Firmware uses a
       5 kg hollow-cube model (I = 0.0623 kg·m²); the demo spin rate and controller gains depend on it.
 
+## 2b. From the motors-on static test (STATIC_0005, `test_runs/STATIC_motors_off_vs_on_analysis.html`)
+
+- [x] 💻 EKF bias settings tightened and z-bias locked to the calibration (replay: ~3 °/h after warm-up vs ~9 °/h old settings).
+- [ ] 🧪 **Warm up before calibrating:** for yaw-sensitive runs, power on, wait ~10 min, then `CALIBRATE 180`. The gyro z bias moves ~25 °/h-worth in the first ~5 min.
+- [ ] 🧪 **`MAG MAP`** on a FIXED table (~11 min, logs `MAGMAP_####.CSV`): maps the magnetometer offset vs each wheel's speed/direction. Then decide model vs. gating for a magnetometer yaw aid.
+- [x] 💻 `DEMO SPIN` now holds a 100 rpm null-mode wheel bias (A,C +100 / B,D −100 rpm) so no shaft sits still (MAG MAP finding; `test_runs/MAGMAP_0001_analysis.html`). Rate budget now ~5.3 rpm.
+- [ ] 🧪 Hard-iron (full-turn) magnetometer calibration from a `DEMO SPIN` log (wheels at the bias speed; skip the ~2 s windows where A/C cross zero).
+
 ## 3. Firmware (💻, mostly with Claude)
 
 - [ ] **Interrupt-driven IMU reads** once INT is wired (pin 20), plus RST in `pins.h` (pin 21).
@@ -66,7 +74,7 @@ Background on earlier findings: `HANDOFF_2026-10-15.md`. Commands and firmware d
 
 ## 4. Tests to come (🧪)
 
-- [ ] **Static test with the motors spinning** (all four at a constant `SPEED`): magnetometer
+- [ ] **Static test with the motors spinning**: `BEGIN STATIC TEST` now holds all four wheels at 100 rpm (`BEGIN STATIC TEST 0` = motors off). Motor packs on, IMU on a still surface: magnetometer
       interference, vibration, accel noise → decides the gated-magnetometer yaw aid (motors-off heading
       was steady to ~0.7°, so it looks promising).
 - [ ] **First `DEMO SPIN`** on the air bearing, after §1–§2 are done: motor packs on, table free to

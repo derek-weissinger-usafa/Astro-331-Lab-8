@@ -22,15 +22,25 @@
 // magnetometer is already read (for the data log) in imu_bno085.cpp. Not fused now.
 
 struct EkfParams {
-  // TODO: placeholders. Tune from a logged stationary run on the table.
+  // gyroNoise / accelSigma: still the original placeholders (static tests suggest ~3e-4 and
+  // ~0.01; retune separately).
   float gyroNoise = 1.0e-3f;      // rad/s/sqrt(Hz), gyro white noise (angle random walk)
-  float gyroBiasWalk = 1.0e-5f;   // rad/s^2/sqrt(Hz), bias random walk
+  // Bias settings tightened 2026-10-16 from the static tests (STATIC_0001 / STATIC_0005): the
+  // Allan deviation shows no bias random walk within 30 min (floor ~2 deg/h ~ 1e-5 rad/s).
+  // With the old 1e-5 walk and 1e-4 floor, the accelerometer (via the 2.3 deg table tilt)
+  // dragged the z bias from the calibrated -0.018 deg/s to ~-0.0125 deg/s => ~24 deg/h of yaw
+  // drift instead of ~4.
+  float gyroBiasWalk = 1.0e-6f;   // rad/s^2/sqrt(Hz), x/y bias random walk
+  float gyroBiasWalkZ = 1.0e-7f;  // rad/s^2/sqrt(Hz), z bias random walk
+  // z bias is not observable from gravity when level and is only weakly (and wrongly) pulled by
+  // the accelerometer when tilted, so by default it comes only from the static calibration.
+  bool lockZBias = true;
   float accelSigma = 0.036f;      // unit-vector noise (~0.35 m/s^2 datasheet accuracy / g)
   float accelGateG = 0.15f;       // reject accel update if | |a| - 1 g | exceeds this
   float accelInflateG = 0.05f;    // R is scaled by 1 + (dev / this)^2 as |a| departs from 1 g
   float initTiltSigmaRad = 0.035f;  // ~2 deg, initial roll/pitch uncertainty
   float initYawSigmaRad = 0.009f;   // ~0.5 deg, yaw is defined as zero at start
-  float minBiasSigma = 1.0e-4f;     // rad/s floor on the initial bias uncertainty
+  float minBiasSigma = 2.0e-5f;     // rad/s floor on the initial bias uncertainty (60 s cal ~1.5e-5)
 };
 
 enum class AccelResult : uint8_t { Applied, GatedMagnitude, Singular };

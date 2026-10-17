@@ -11,7 +11,7 @@ static const char kHeader[] =
     "motor_a_duty,motor_b_duty,motor_c_duty,motor_d_duty,"
     "qw,qx,qy,qz,roll_deg,pitch_deg,yaw_deg,bias_x_rad_s,bias_y_rad_s,bias_z_rad_s,"
     "sig_roll_deg,sig_pitch_deg,sig_yaw_deg,accel_status,state,demo_phase,rate_ref_rad_s,yaw_ref_deg,"
-    "gyro_seq,gyro_seq_missed\n";
+    "gyro_seq,gyro_seq_missed,test_step\n";
 
 void DataLogger::say(const char* msg) {
   const size_t n = strlen(msg);
@@ -65,12 +65,12 @@ void DataLogger::logRow(const LogRow& r) {
   const int n = snprintf(
       line, sizeof(line),
       "%.3f,%.5f,%.5f,%.5f,%.3f,%.3f,%.3f,%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.1f,%.3f,%.3f,%.3f,%.3f,"
-      "%.6f,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%d,%c,%c,%.4f,%.3f,%d,%lu\n",
+      "%.6f,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%d,%c,%c,%.4f,%.3f,%d,%lu,%d\n",
       r.ms, r.gyro.x, r.gyro.y, r.gyro.z, r.accel.x, r.accel.y, r.accel.z, r.mag.x, r.mag.y,
       r.mag.z, r.rpm[0], r.rpm[1], r.rpm[2], r.rpm[3], r.duty[0], r.duty[1], r.duty[2], r.duty[3],
       r.q.w, r.q.x, r.q.y, r.q.z, r.eulerDeg.x, r.eulerDeg.y, r.eulerDeg.z, r.bias.x, r.bias.y,
       r.bias.z, r.sigmaDeg.x, r.sigmaDeg.y, r.sigmaDeg.z, r.accelStatus, r.state, r.demoPhase,
-      r.rateRef, r.yawRefDeg, r.gyroSeq, (unsigned long)r.seqMissed);
+      r.rateRef, r.yawRefDeg, r.gyroSeq, (unsigned long)r.seqMissed, r.testStep);
   if (n <= 0 || n >= (int)sizeof(line)) return;
 
   if (sd_) {

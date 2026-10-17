@@ -42,6 +42,7 @@ struct LogRow {
   float yawRefDeg = 0;   // demo reference yaw, deg
   int gyroSeq = 0;           // BNO085 gyro report sequence number (0-255, +1 per report sent)
   uint32_t seqMissed = 0;    // cumulative gyro reports sent by the BNO085 but never received
+  int testStep = -1;         // MAG MAP schedule step (0-based, see mag_map.h); -1 = not running
 };
 
 class DataLogger {

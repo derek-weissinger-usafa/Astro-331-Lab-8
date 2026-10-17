@@ -47,6 +47,9 @@ class DemoSpin {
   float rateRef() const { return rate_; }
   float yawRef() const { return yaw_; }
   float targetRate() const { return target_; }
+  // Null-mode wheel bias to hold (rad/s): kDemoWheelBiasRadS while running, ramped to 0 over
+  // the Settle phase so the wheels aren't braked from speed at the end; 0 when off.
+  float wheelBias() const;
 
  private:
   void setLevelRef(float s, float sdot, float sddot);

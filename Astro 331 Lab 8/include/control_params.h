@@ -84,6 +84,14 @@ constexpr uint32_t kImuTimeoutMs = 100;
 constexpr uint32_t kCalDurationMs = 60000;
 constexpr uint32_t kCalProgressMs = 10000;   // progress message interval
 
+// ---- Static test ("BEGIN STATIC TEST [rpm]") ----
+// Wheel speed held during the static test, to measure magnetometer / IMU behaviour with the
+// motors running (all four wheels, Manual mode). 0 = motors off.
+constexpr float kStaticTestWheelRpm = 100.0f;
+
+// ---- Magnetometer disturbance map ("MAG MAP", schedule in mag_map.h) ----
+constexpr uint32_t kMagMapStepMs = 20000;  // hold per step (ramp ~1-2 s + settled average)
+
 // ---- IMU sample-loss diagnostics ----
 constexpr float kImuGapMs = 15.0f;  // gyro interval above this (nominal 10 ms) counts as a gap
 
@@ -103,7 +111,8 @@ constexpr float kManualSpeedLpfTauS = 0.1f;
 
 // ---- Demo: level, then spin counter-clockwise about +z (XBee "DEMO SPIN", "STOP") ----
 // Requested 30 rpm, but the rate actually used is capped by the wheels' z-momentum budget:
-//   rate = margin * sum(a_i.z) * J * kWheelMaxSpeedRadS / I_zz   (~0.67 rad/s = 6.4 rpm here)
+//   rate = margin * sum(a_i.z) * J * (kWheelMaxSpeedRadS - kDemoWheelBiasRadS) / I_zz
+//        (~0.55 rad/s = 5.3 rpm with the 100 rpm wheel bias; 6.4 rpm without it)
 constexpr float kDemoRequestedRateRadS = 3.14159265f;  // 30 rpm
 constexpr float kDemoMomentumMargin = 0.8f;    // leave 20% for levelling, drag, tracking error
 constexpr float kDemoLevelRateRadS = 0.1f;     // max reference tilt rate while levelling (~6 deg/s)
@@ -113,7 +122,15 @@ constexpr float kDemoLevelHoldS = 3.0f;        // ... continuously for this long
 constexpr float kDemoLevelTimeoutS = 20.0f;    // after the slew; then abort
 constexpr float kDemoRampS = 10.0f;            // spin-up and spin-down duration
 constexpr float kDemoHoldS = 10.0f;            // constant-rate hold
-constexpr float kDemoSettleS = 3.0f;           // hold heading at rest before returning to Idle
+constexpr float kDemoSettleS = 5.0f;           // hold heading at rest (and ramp the wheel bias to 0)
+// Wheel bias during the demo (MAG MAP 2026-10-16): stopped motors leave a static magnetometer
+// offset that depends on where each shaft stops (up to ~5 uT / ~5 deg per wheel), and slow
+// wheels swing the field too slowly to filter. So the demo holds the 4-wheel null mode
+// [+1,-1,+1,-1] at this speed: A,C at +100 rpm, B,D at -100 rpm (no net torque or momentum),
+// keeping the magnet fields fast and averaging out. 100 rpm also avoids the ~50 rpm vibration
+// resonance. Costs speed headroom: the spin rate budget uses (kWheelMaxSpeedRadS - bias).
+// The z spin drives all wheels the same way, so A and C cross zero briefly on each ramp.
+constexpr float kDemoWheelBiasRadS = 10.47f;   // 100 rpm
 constexpr float kDemoStartMaxWheelRadS = 2.0f; // wheels must be ~stopped to start
 constexpr float kDemoWheelAbortRadS = 55.0f;   // any wheel above this => spin down early
 

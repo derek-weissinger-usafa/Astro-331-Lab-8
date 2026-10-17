@@ -12,22 +12,29 @@
 //                          enters Manual). DISARM/KILL stops all wheels and returns to Idle.
 //   COUNTS         raw encoder counts per wheel since the last ZERO (+ output turns at kEncoderCountsPerRev)
 //   ZERO           zero the COUNTS readout (any state; does not affect speed or control)
-//   BEGIN STATIC TEST  start logging every row to a new STATIC_####.CSV on the SD card until
-//                      power is removed (refused while calibrating; repeat just reports the file)
+//   BEGIN STATIC TEST [rpm]  start logging every row to a new STATIC_####.CSV on the SD card
+//                      until power is removed, and hold all four wheels at a constant speed
+//                      (default kStaticTestWheelRpm = 100; "0" = motors off) via Manual mode.
+//                      Refused while calibrating; a repeat just reports the file.
 //   DEMO SPIN      demo: level from <=30 deg tilt (keeping heading), spin up CCW about +z over
 //                  10 s to the highest rate the wheels' momentum allows (<= 30 rpm), hold 10 s,
 //                  spin down over 10 s, settle 3 s, then Idle. From Idle only, wheels stopped.
 //   STOP           controlled end of the demo (spin down from the current rate); KILL is the
 //                  emergency stop (brakes the wheels, which also stops the table abruptly)
-//   CALIBRATE      redo the static gyro-bias calibration (Idle only; keep still kCalDurationMs)
+//   CALIBRATE [s]  redo the static gyro-bias calibration (Idle only; keep still). Optional
+//                  duration 10-900 s (default kCalDurationMs). Best after ~10 min of warm-up.
+//   MAG MAP        magnetometer disturbance map: step the wheels through the schedule in
+//                  mag_map.h (~11 min) while logging to MAGMAP_####.CSV; table must be FIXED.
+//                  STOP / DISARM / KILL end it (wheels stop, logging continues).
 enum class Cmd : uint8_t { None, Arm, Disarm, Kill, Status, Ping, Test, Speed, Counts, Zero,
-                           BeginStatic, DemoSpin, Stop, Calibrate, Unknown };
+                           BeginStatic, DemoSpin, Stop, Calibrate, MagMap, Unknown };
 
 struct Command {
   static constexpr int kAllWheels = 4;
   Cmd cmd = Cmd::None;
   int wheel = -1;    // Test/Speed: 0..3 for A..D; Speed also accepts kAllWheels
-  float value = 0;   // Test: duty. Speed: rpm
+  float value = 0;   // Test: duty. Speed: rpm. BeginStatic: wheel rpm (if hasValue)
+  bool hasValue = false;  // BeginStatic: an rpm was given
 };
 
 class CommandLink {

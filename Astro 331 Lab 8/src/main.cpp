@@ -8,6 +8,7 @@
 #include "demo_spin.h"
 #include "frames.h"
 #include "imu_bno085.h"
+#include "mag_map.h"
 #include "pins.h"
 #include "wheel_geometry.h"
 #include "wheel_motor.h"
@@ -69,6 +70,7 @@ static constexpr float kCalMaxGyroMean = 0.05f;   // rad/s, rejects a rotating t
 static constexpr uint32_t kMinCalSamples = 100;
 
 static uint32_t calStartMs = 0, calProgressMs = 0;
+static uint32_t calDurationMs = params::kCalDurationMs;  // boot default; CALIBRATE <s> overrides
 static uint32_t calGyroN = 0, calAccelN = 0;
 static double gSum[3], gSumSq[3], aSum[3];
 
@@ -107,10 +109,15 @@ static void stopAllWheels() {
   for (int i = 0; i < kN; i++) wheels[i].stop();
 }
 
+// MAG MAP progress: current schedule step (-1 = not running) and when it started.
+static int magStep = -1;
+static uint32_t magStepStartMs = 0;
+
 static void disarm(const char* reason) {
   stopAllWheels();
   testWheel = -1;
   demo.abort();
+  magStep = -1;
   if (state == State::Armed || state == State::Manual) state = State::Idle;
   char msg[48];
   snprintf(msg, sizeof(msg), "# DISARM %s\n", reason);
@@ -152,10 +159,14 @@ static Vec3 wheelMomentum(const Vec3& omega) {
 // the requested 30 rpm. Only enabled wheels count.
 static float demoTargetRate() {
   float az = 0.0f;
-  for (int i = 0; i < kN; i++)
+  bool all = true;
+  for (int i = 0; i < kN; i++) {
     if (wheelEnabled[i]) az += fabsf(axis(i).z);
-  const float cap = params::kDemoMomentumMargin * az * params::kWheelInertia *
-                    params::kWheelMaxSpeedRadS / params::kBodyInertia[2];
+    all = all && wheelEnabled[i];
+  }
+  // The null-mode wheel bias (all four wheels only) uses part of each wheel's speed range.
+  const float usable = params::kWheelMaxSpeedRadS - (all ? params::kDemoWheelBiasRadS : 0.0f);
+  const float cap = params::kDemoMomentumMargin * az * params::kWheelInertia * usable / params::kBodyInertia[2];
   return cap < params::kDemoRequestedRateRadS ? cap : params::kDemoRequestedRateRadS;
 }
 
@@ -218,18 +229,26 @@ static void resetCalibration() {
   for (int i = 0; i < 3; i++) gSum[i] = gSumSq[i] = aSum[i] = 0.0;
 }
 
-// CALIBRATE: redo the static gyro-bias calibration (table must stay still). Idle only.
-static void startCalibration(CommandLink& from) {
+// CALIBRATE [seconds]: redo the static gyro-bias calibration (table must stay still). Idle only.
+// Best done after ~10 min powered: the BNO085 z bias drifts ~0.007 deg/s (~25 deg/h of yaw)
+// over the first ~5 min while the chip warms up (static tests 2026-10-15/16).
+static void startCalibration(const Command& c, CommandLink& from) {
   if (state != State::Idle) {
     from.send("# CALIBRATE REFUSED: not idle\n");
     return;
+  }
+  if (c.hasValue) {
+    float s = c.value;
+    if (s < 10.0f) s = 10.0f;
+    if (s > 900.0f) s = 900.0f;
+    calDurationMs = (uint32_t)(s * 1000.0f);
   }
   state = State::Calibrating;
   haveLastGyro = false;
   resetCalibration();
   char msg[72];
   snprintf(msg, sizeof(msg), "# CALIBRATING: hold the table still for %lu s\n",
-           (unsigned long)(params::kCalDurationMs / 1000));
+           (unsigned long)(calDurationMs / 1000));
   sayAll(msg);
 }
 
@@ -292,12 +311,97 @@ static void logData(uint32_t sampleUs) {
   r.state = stateChar();
   r.gyroSeq = lastGyroSeq;
   r.seqMissed = seqMissed;
+  r.testStep = magStep;
   if (demo.active()) {
     r.demoPhase = demo.phaseChar();
     r.rateRef = demo.rateRef();
     r.yawRefDeg = demo.yawRef() * kRadToDeg;
   }
   logger.logRow(r);
+}
+
+// Manual (SPEED) mode: closed-loop speed setpoint for one wheel or all (Command::kAllWheels),
+// entering Manual from Idle. Setpoints ramp at kManualAccelRadS2; overspeed disarms.
+// ---- MAG MAP: step the wheels through mag_map::kSteps (Manual mode) while logging ----
+static void applyMagStep() {
+  constexpr float kRpmToRadS = 6.2831853f / 60.0f;
+  const mag_map::Step& s = mag_map::kSteps[magStep];
+  for (int i = 0; i < kN; i++) manualTarget[i] = s.rpm[i] * kRpmToRadS;
+  magStepStartMs = millis();
+  char msg[80];
+  snprintf(msg, sizeof(msg), "# MAGMAP step %d/%d: A=%d B=%d C=%d D=%d rpm\n", magStep + 1, mag_map::kNumSteps,
+           s.rpm[0], s.rpm[1], s.rpm[2], s.rpm[3]);
+  sayAll(msg);
+}
+
+static void startMagMap(CommandLink& from) {
+  if (state != State::Idle) {
+    from.send("# MAGMAP REFUSED: not idle (wait for calibration / DISARM first)\n");
+    return;
+  }
+  for (int i = 0; i < kN; i++) {
+    if (fabsf(wheels[i].speed()) > params::kDemoStartMaxWheelRadS) {
+      from.send("# MAGMAP REFUSED: wheels still turning\n");
+      return;
+    }
+  }
+  if (!logger.sdActive()) logger.startFile("MAGMAP");
+  testWheel = -1;
+  for (int i = 0; i < kN; i++) {
+    speedLoops[i].reset();
+    wheelCmd[i] = manualTarget[i] = 0.0f;
+  }
+  state = State::Manual;
+  char msg[112];
+  snprintf(msg, sizeof(msg), "# MAGMAP START: %d steps x %lu s (~%lu min), table must be FIXED%s%s\n",
+           mag_map::kNumSteps, (unsigned long)(params::kMagMapStepMs / 1000),
+           (unsigned long)(mag_map::kNumSteps * params::kMagMapStepMs / 60000 + 1),
+           logger.sdActive() ? ", log " : ", NO SD LOG", logger.sdActive() ? logger.fileName() : "");
+  sayAll(msg);
+  magStep = 0;
+  applyMagStep();
+}
+
+// Called every loop(): advance the schedule; end with the wheels stopped (logging continues).
+static void updateMagMap() {
+  if (magStep < 0) return;
+  if (state != State::Manual) {  // overspeed or another command left Manual mode
+    magStep = -1;
+    sayAll("# MAGMAP ABORTED: left Manual mode\n");
+    return;
+  }
+  if (millis() - magStepStartMs < params::kMagMapStepMs) return;
+  if (++magStep >= mag_map::kNumSteps) {
+    disarm("MAGMAP_COMPLETE");  // wheels stop; SD logging continues until power off
+    return;
+  }
+  applyMagStep();
+}
+
+static bool setManualSpeed(int wheel, float rpm, CommandLink& from) {
+  if (state != State::Idle && state != State::Manual) {
+    from.send("# SPEED REFUSED: not idle/manual\n");
+    return false;
+  }
+  if (state == State::Idle) {
+    testWheel = -1;
+    for (int i = 0; i < kN; i++) {
+      speedLoops[i].reset();
+      wheelCmd[i] = manualTarget[i] = 0.0f;
+    }
+    state = State::Manual;
+  }
+  constexpr float kRpmToRadS = 6.2831853f / 60.0f;
+  float w = rpm * kRpmToRadS;
+  if (w > params::kWheelMaxSpeedRadS) w = params::kWheelMaxSpeedRadS;
+  if (w < -params::kWheelMaxSpeedRadS) w = -params::kWheelMaxSpeedRadS;
+  for (int i = 0; i < kN; i++)
+    if (wheel == Command::kAllWheels || wheel == i) manualTarget[i] = w;
+  char msg[72];
+  snprintf(msg, sizeof(msg), "# MANUAL rpm A=%.0f B=%.0f C=%.0f D=%.0f\n", manualTarget[0] / kRpmToRadS,
+           manualTarget[1] / kRpmToRadS, manualTarget[2] / kRpmToRadS, manualTarget[3] / kRpmToRadS);
+  sayAll(msg);
+  return true;
 }
 
 static void handleCommand(const Command& c, CommandLink& from) {
@@ -330,27 +434,42 @@ static void handleCommand(const Command& c, CommandLink& from) {
       startDemo(from);
       break;
     case Cmd::Calibrate:
-      startCalibration(from);
+      startCalibration(c, from);
       break;
     case Cmd::Stop:
-      stopDemo(from);
+      if (magStep >= 0) {
+        disarm("MAGMAP_STOPPED");
+      } else {
+        stopDemo(from);
+      }
+      break;
+    case Cmd::MagMap:
+      startMagMap(from);
       break;
     case Cmd::BeginStatic: {
+      // "BEGIN STATIC TEST [rpm]": SD log + all four wheels held at a constant speed (default
+      // kStaticTestWheelRpm; 0 = motors off) to measure magnetometer/IMU behaviour with the
+      // motors running. DISARM/KILL stops the wheels; logging continues until power off.
       if (state == State::Calibrating) {
         from.send("# BEGIN REFUSED: still calibrating - keep the table still and retry\n");
         break;
       }
-      char msg[96];
+      const float rpm = c.hasValue ? c.value : params::kStaticTestWheelRpm;
+      if (rpm != 0.0f && state != State::Idle && state != State::Manual) {
+        from.send("# BEGIN REFUSED: not idle (DISARM first)\n");
+        break;
+      }
+      char msg[112];
       if (logger.sdActive()) {
         snprintf(msg, sizeof(msg), "# STATIC TEST already running: %s\n", logger.fileName());
         from.send(msg);
         break;
       }
-      if (logger.startFile("STATIC")) {  // on failure startFile reports the reason itself
-        snprintf(msg, sizeof(msg), "# STATIC TEST STARTED: logging 100 Hz to %s until power off\n",
-                 logger.fileName());
-        sayAll(msg);
-      }
+      if (!logger.startFile("STATIC")) break;  // startFile reports the reason itself
+      snprintf(msg, sizeof(msg), "# STATIC TEST STARTED: logging 100 Hz to %s until power off, wheels %.0f rpm\n",
+               logger.fileName(), rpm);
+      sayAll(msg);
+      if (rpm != 0.0f) setManualSpeed(Command::kAllWheels, rpm, from);
       break;
     }
     case Cmd::Test: {
@@ -366,31 +485,9 @@ static void handleCommand(const Command& c, CommandLink& from) {
       testEndMs = millis() + params::kTestDurationMs;
       break;
     }
-    case Cmd::Speed: {
-      if (state != State::Idle && state != State::Manual) {
-        from.send("# SPEED REFUSED: not idle/manual\n");
-        break;
-      }
-      if (state == State::Idle) {
-        testWheel = -1;
-        for (int i = 0; i < kN; i++) {
-          speedLoops[i].reset();
-          wheelCmd[i] = manualTarget[i] = 0.0f;
-        }
-        state = State::Manual;
-      }
-      constexpr float kRpmToRadS = 6.2831853f / 60.0f;
-      float w = c.value * kRpmToRadS;
-      if (w > params::kWheelMaxSpeedRadS) w = params::kWheelMaxSpeedRadS;
-      if (w < -params::kWheelMaxSpeedRadS) w = -params::kWheelMaxSpeedRadS;
-      for (int i = 0; i < kN; i++)
-        if (c.wheel == Command::kAllWheels || c.wheel == i) manualTarget[i] = w;
-      char msg[72];
-      snprintf(msg, sizeof(msg), "# MANUAL rpm A=%.0f B=%.0f C=%.0f D=%.0f\n", manualTarget[0] / kRpmToRadS,
-               manualTarget[1] / kRpmToRadS, manualTarget[2] / kRpmToRadS, manualTarget[3] / kRpmToRadS);
-      sayAll(msg);
+    case Cmd::Speed:
+      setManualSpeed(c.wheel, c.value, from);
       break;
-    }
     case Cmd::Counts: {
       long n[kN];
       for (int i = 0; i < kN; i++) n[i] = wheels[i].count();
@@ -492,7 +589,10 @@ static void controlStep(float dt) {
     all = all && wheelEnabled[i];
     spd[i] = wheels[i].speed();
   }
-  if (all) addNullSpaceTorque(spd, params::kWheelInertia, params::kNullGain, params::kNullBiasRadS, u);
+  // Null mode: hold the [+1,-1,+1,-1] wheel-speed combination at the bias (no body torque).
+  // DEMO SPIN keeps the wheels at ~100 rpm so no shaft sits still (magnetometer, mag_map.h).
+  const float nullBias = demo.active() ? demo.wheelBias() : params::kNullBiasRadS;
+  if (all) addNullSpaceTorque(spd, params::kWheelInertia, params::kNullGain, nullBias, u);
 
   for (int i = 0; i < kN; i++) {
     if (!wheelEnabled[i]) continue;
@@ -569,12 +669,12 @@ static void handleCalibrationSample(const ImuSample& s) {
   }
 
   const uint32_t elapsed = millis() - calStartMs;
-  if (elapsed < params::kCalDurationMs) {
+  if (elapsed < calDurationMs) {
     if (millis() - calProgressMs >= params::kCalProgressMs) {
       calProgressMs = millis();
       char msg[56];
       snprintf(msg, sizeof(msg), "# calibrating: %lu / %lu s, keep still\n", (unsigned long)(elapsed / 1000),
-               (unsigned long)(params::kCalDurationMs / 1000));
+               (unsigned long)(calDurationMs / 1000));
       sayAll(msg);
     }
     return;
@@ -620,7 +720,7 @@ static void handleCalibrationSample(const ImuSample& s) {
   char msg[96];
   snprintf(msg, sizeof(msg), "# calibrated: bias[deg/s]=%.4f,%.4f,%.4f (N=%lu, %lu s)\n", mean.x * kRadToDeg,
            mean.y * kRadToDeg, mean.z * kRadToDeg, (unsigned long)calGyroN,
-           (unsigned long)(params::kCalDurationMs / 1000));
+           (unsigned long)(calDurationMs / 1000));
   sayAll(msg);
   Serial.println(
       "# t_ms,qw,qx,qy,qz,roll,pitch,yaw,bx,by,bz,sig_roll,sig_pitch,sig_yaw,accel_status,w0,w1,w2,w3,state,"
@@ -655,7 +755,7 @@ void setup() {
   {
     char msg[72];
     snprintf(msg, sizeof(msg), "# BNO085 ready. HOLD THE TABLE STILL for %lu s calibration.\n",
-             (unsigned long)(params::kCalDurationMs / 1000));
+             (unsigned long)(calDurationMs / 1000));
     sayAll(msg);
   }
   resetCalibration();
@@ -710,6 +810,7 @@ void loop() {
     lastWheelUs = nowUs;
   }
 
+  updateMagMap();
   logger.service();  // rows are produced per gyro sample above
 
   if (state != State::Calibrating && millis() - lastUsbMs >= params::kUsbTelemetryMs) {
