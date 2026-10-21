@@ -5,7 +5,7 @@ reports. Newest work is at the bottom of §2. Firmware details and commands live
 the prioritised to-do list in `TODO.md`, and the 2026-10-15 bench notes in `HANDOFF_2026-10-15.md`.
 Data and analysis pages are in `test_runs/` (index in §5).
 
-Last updated 2026-10-20.
+Last updated 2026-10-21.
 
 ---
 
@@ -122,6 +122,13 @@ What changed (`src/imu_bno085.cpp`, `src/main.cpp`, `src/data_logger.cpp`):
 7. **Diagnostics:** `STATUS` reports `miss` (lost samples), `lat` (worst INT-to-read delay, ms), `int`, `svc`,
    `ev`, `rst` (chip resets; 1 = the boot reset), `en`. If the IMU is missing at boot the firmware retries every
    second and prints which I2C addresses answered.
+
+### 2.9 Preliminary data review deck (2026-10-21)
+- `Reports/Astro 331 Lab 8_2_3 Body Problem_Prelim_Pres_FILLED.pptx`: 16 slides built on the team template
+  (requirements verification table, theory, build progress, 5 data slides with Measure/Compare/Explain/Next,
+  future plans, GenAI documentation). Figures and diagrams are in `Reports/figures/` for reuse in the final report.
+- To confirm before submitting: slide 4 pass criteria (proposed thresholds), slide 16 GenAI format, Gowri's
+  contributions, "2025 Fall" in the slide master, and adding a hardware photo.
 
 ---
 
