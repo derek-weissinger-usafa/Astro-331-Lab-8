@@ -14,27 +14,31 @@ Background on earlier findings: `HANDOFF_2026-10-15.md`. Commands and firmware d
       `~/.platformio/penv/Scripts/pio.exe run -t upload --upload-port COM3` from the PlatformIO folder.
       It is NOT on the board yet. It adds: **60 s startup calibration**, `CALIBRATE`, IMU sequence
       diagnostics, `DEMO SPIN` / `STOP`.
-      If the board sends nothing after an upload, **power-cycle** (logic off, unplug USB, wait, replug):
-      the BNO085 can hang because its RST pin isn't wired.
+      RST is wired now (2026-10-20): the firmware hardware-resets the BNO085 at startup, so uploads no
+      longer need a power cycle. If the IMU isn't found, the firmware retries every second and prints
+      `# ERROR: BNO085 not responding ... i2c: <addresses>` (`none` = no power/ground or I2C lines).
 - [ ] 🧪 **Keep the table still for the 60 s calibration** after every boot (progress prints every 10 s
       over the XBee). If bumped, it restarts.
 - [ ] 🧪 **Find where IMU samples are lost** (static test lost ~1/3 of gyro samples and froze up to 330 ms,
       38 times over 100 ms, in clusters ~20 s apart):
   - [ ] Idle ~5 min, **SD logging off** → send `STATUS`, note `miss=`, `chipgap=`, `maxgap=`.
   - [ ] Power-cycle, `BEGIN STATIC TEST`, ~5 min → `STATUS` again.
-  - Reading it: large **`miss`** = reports the BNO085 sent but the Teensy never read (our side: no INT
-    wiring and/or SD writes blocking the loop). Large **`chipgap`** = the BNO085 itself sent late.
-    If `miss` only jumps while logging → SD writes are the cause.
+  - Reading it: large **`miss`** = reports the BNO085 sent but the Teensy never read. Large
+    **`chipgap`** = the BNO085 itself sent late. `lat=` = worst INT-to-read delay (ms; datasheet wants
+    ~1). If `miss`/`lat` only jump while logging → SD writes are the cause.
+  - **2026-10-20 finding:** most of the old ~1/3 loss was the Adafruit library, not the bus: its
+    `getSensorEvent()` keeps only the last report of each transfer, and gyro+accel+mag at 100 Hz often
+    share one. Fixed (own SH2 callback + queue). First check, idle, SD off: `miss=0`, `maxgap=11` ms,
+    `lat` < 0.05 ms. With SD on: `miss=102, lat=40` → yield() servicing → `miss=12, lat=43` → SD
+    DMA mode (uploaded, **untested**). Next: 5-min `BEGIN STATIC TEST`, then `STATUS`; expect `miss`≈0,
+    `lat` a few ms. If `sd=off`, DMA mode isn't detecting the card.
 - [ ] 🧪 **Repeat the static test with the 60 s calibration** (~30 min, motors off, table still,
       `BEGIN STATIC TEST`). Expect yaw drift **~6 °/h** instead of 27 °/h. Drop the CSV in `test_runs/`
       for analysis; the new `gyro_seq` columns will show exactly which samples were lost.
 
 ## 2. Hardware fixes
 
-- [ ] 🔧 **Wire BNO085 INT → Teensy pin 20 and RST → pin 21** (two jumpers; STEMMA QT only carries
-      power + I²C). INT: the datasheet wants the host to answer data-ready within ~1 ms at 100 Hz or
-      the chip starves and drops outputs; we currently don't watch it at all. RST: lets firmware
-      reset the IMU, fixing the post-upload hang. Then tell Claude to add the firmware side (§3).
+- [x] 🔧 **Wire BNO085 INT → Teensy pin 20 and RST → pin 21** (done 2026-10-20; firmware side done too).
 - [ ] 🔧 **Wheel A rubs** (heard on the bench; needs ~0.42 duty vs 0.30 for B/D). Find the contact
       (wheel vs housing, wire, mount alignment).
 - [ ] 🔧 **Charge pack A** (~1 V low). Charge all Epoch cells individually; each pack 12.4–12.6 V,
@@ -58,7 +62,8 @@ Background on earlier findings: `HANDOFF_2026-10-15.md`. Commands and firmware d
 
 ## 3. Firmware (💻, mostly with Claude)
 
-- [ ] **Interrupt-driven IMU reads** once INT is wired (pin 20), plus RST in `pins.h` (pin 21).
+- [x] **Interrupt-driven IMU reads** (INT pin 20, RST pin 21; `imu_bno085.cpp`). INT must NOT have the
+      Teensy pull-up: with `INPUT_PULLUP` the line never read low and the chip sent nothing.
 - [ ] **Non-blocking SD logging** if gaps persist while logging: preallocated contiguous file + only
       write when the card isn't busy (Teensy SDIO "logger" pattern), plus a `STOP LOG` command to close
       the file cleanly (otherwise a power cut leaves empty space at the end, trimmed in analysis).

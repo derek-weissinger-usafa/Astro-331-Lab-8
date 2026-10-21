@@ -13,6 +13,12 @@ static const char kHeader[] =
     "sig_roll_deg,sig_pitch_deg,sig_yaw_deg,accel_status,state,demo_phase,rate_ref_rad_s,yaw_ref_deg,"
     "gyro_seq,gyro_seq_missed,test_step\n";
 
+// Built-in SD card in DMA mode. The SD library's own begin picks FIFO mode, whose write path
+// spins (without yield()) while the card programs flash mid-write; that froze loop() for up to
+// ~43 ms (2026-10-20 static test). In DMA mode every long card wait calls yield(), which keeps
+// the IMU serviced. Throughput is lower but far above the ~26 KB/s this log needs.
+static bool beginCard() { return SD.sdfs.begin(SdioConfig(DMA_SDIO)); }
+
 void DataLogger::say(const char* msg) {
   const size_t n = strlen(msg);
   if ((size_t)radio_.availableForWrite() >= n) radio_.write((const uint8_t*)msg, n);
@@ -21,7 +27,7 @@ void DataLogger::say(const char* msg) {
 
 bool DataLogger::begin() {
   sd_ = false;
-  card_ = SD.begin(BUILTIN_SDCARD);
+  card_ = beginCard();
   say(card_ ? "# SD: card ready. Send BEGIN STATIC TEST to start logging.\n"
             : "# SD: not available (no card?)\n");
 
@@ -32,7 +38,7 @@ bool DataLogger::begin() {
 
 bool DataLogger::startFile(const char* prefix) {
   if (sd_) return true;
-  if (!card_) card_ = SD.begin(BUILTIN_SDCARD);  // card may have been inserted after boot
+  if (!card_) card_ = beginCard();  // card may have been inserted after boot
   if (!card_) {
     say("# SD: not available (no card?)\n");
     return false;
@@ -106,6 +112,9 @@ void DataLogger::failSd() {
 
 void DataLogger::service() {
   if (!sd_) return;
+  // Don't queue behind a card that is still programming the last write: SdFat would busy-wait
+  // (calling yield(), which services the IMU, but loop() and control would still stall).
+  if (SD.sdfs.card()->isBusy()) return;
 
   // At most one chunk per call keeps each call's SD latency bounded.
   if (len_ >= kChunk) {

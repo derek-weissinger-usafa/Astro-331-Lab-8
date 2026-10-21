@@ -5,10 +5,11 @@
 // and confirmed board-side wiring documented in CLAUDE.md.
 // Teensy 4.1 I2C buses: Wire (SDA 18, SCL 19), Wire1 (SDA1 17, SCL1 16), Wire2 (SDA2 25, SCL2 24).
 
-// BNO085 IMU: STEMMA QT on Wire (blue SDA -> 18, yellow SCL -> 19), powered from 3.3 V. I2C only.
+// BNO085 IMU: STEMMA QT on Wire (blue SDA -> 18, yellow SCL -> 19), powered from 3.3 V. I2C, plus RST and INT.
 #define IMU_I2C_BUS Wire
-constexpr int kPinImuReset = -1;   // BNO085 RST not connected
-constexpr int kPinImuInt = -1;     // BNO085 INT not connected
+// RST and INT wired 2026-10-20 (Adafruit breakout RST / INT pads).
+constexpr int kPinImuReset = 21;   // BNO085 RST (active low), driven high by the driver
+constexpr int kPinImuInt = 20;     // BNO085 INT / H_INTN (active low): data ready
 constexpr uint8_t kImuI2cAddr = 0x4A;  // Adafruit BNO085 default; 0x4B if the address jumper is bridged
 
 // XBee radio on hardware serial 8 (Teensy RX8 34 <- XBee DOUT, TX8 35 -> XBee DIN).

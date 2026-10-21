@@ -24,7 +24,7 @@
 
 using namespace wheel_geometry;
 
-static Bno085Imu imu(kPinImuReset);
+static Bno085Imu imu(kPinImuReset, kPinImuInt);
 static AttitudeEKF ekf;
 static AttitudeController ctrl;
 static CommandLink xbee(XBEE_SERIAL);
@@ -419,14 +419,19 @@ static void handleCommand(const Command& c, CommandLink& from) {
     case Cmd::Status: {
       const Vec3 e = ekf.eulerRad() * kRadToDeg;
       const Vec3 s = ekf.sigmaRad() * kRadToDeg;
-      char msg[192];
+      char msg[300];
       snprintf(msg, sizeof(msg),
                "S,%c,%.1f,%.1f,%.1f,sig_yaw=%.2f,%.0f,%.0f,%.0f,%.0f,sd=%s,drop=%lu,demo=%c,"
-               "miss=%lu,chipgap=%lu,maxgap=%.0f\n",
+               "miss=%lu,chipgap=%lu,maxgap=%.0f,lat=%.2f,int=%lu,svc=%lu/%lu,ev=%lu,rst=%lu,en=%lu/%d,intpin=%d\n",
                stateChar(), e.x, e.y, e.z, s.z, wheels[0].speed(), wheels[1].speed(), wheels[2].speed(),
                wheels[3].speed(), logger.sdActive() ? logger.fileName() : "off",
                (unsigned long)logger.droppedRows(), demo.phaseChar(), (unsigned long)seqMissed,
-               (unsigned long)chipGaps, maxGyroGapMs);
+               (unsigned long)chipGaps, maxGyroGapMs, imu.maxLatencyUs() * 1.0e-3f,
+               (unsigned long)imu.intCount(), (unsigned long)imu.serviceCount(),
+               (unsigned long)imu.freshCount(),
+               (unsigned long)imu.eventCount(), (unsigned long)imu.resetCount(),
+               (unsigned long)imu.enableCount(), imu.lastEnableOk() ? 1 : 0,
+               kPinImuInt >= 0 ? digitalRead(kPinImuInt) : -1);
       from.send(msg);
       break;
     }
@@ -745,12 +750,30 @@ void setup() {
 
   IMU_I2C_BUS.begin();
   IMU_I2C_BUS.setClock(400000);
-  if (!imu.begin(IMU_I2C_BUS, kImuI2cAddr)) {
-    Serial.println("# ERROR: BNO085 not found / reports not enabled. Check wiring and address.");
-    while (true) {
-      stopAllWheels();
-      delay(1000);  // halt in setup only; loop() stays non-blocking
+  // Keep retrying (each attempt hardware-resets the chip) and keep saying why, so the message
+  // is seen even if the USB/XBee monitor was opened late. Halts in setup only.
+  while (!imu.begin(IMU_I2C_BUS, kImuI2cAddr)) {
+    stopAllWheels();
+    char msg[112];
+    // Wiring diagnostics: idle level of RST and INT with neither driven (RST has a pull-up on
+    // the breakout, INT is driven by the chip), and every address that ACKs on the bus.
+    if (kPinImuReset >= 0) pinMode(kPinImuReset, INPUT);
+    if (kPinImuInt >= 0) pinMode(kPinImuInt, INPUT);
+    delay(5);
+    char found[48] = "";
+    for (uint8_t a = 0x08; a < 0x78; a++) {
+      IMU_I2C_BUS.beginTransmission(a);
+      if (IMU_I2C_BUS.endTransmission() == 0 && strlen(found) < sizeof(found) - 6) {
+        char h[6];
+        snprintf(h, sizeof(h), "0x%02X ", a);
+        strcat(found, h);
+      }
     }
+    snprintf(msg, sizeof(msg), "# ERROR: BNO085 not responding. RST(%d)=%d INT(%d)=%d i2c: %s\n",
+             kPinImuReset, kPinImuReset >= 0 ? digitalRead(kPinImuReset) : -1, kPinImuInt,
+             kPinImuInt >= 0 ? digitalRead(kPinImuInt) : -1, found[0] ? found : "none");
+    sayAll(msg);
+    delay(1000);
   }
   {
     char msg[72];
@@ -761,6 +784,15 @@ void setup() {
   resetCalibration();
   lastGyroMs = millis();
   lastWheelUs = micros();
+}
+
+// Replaces the Teensy core's weak yield(). SdFat calls yield() while it waits on the SD card
+// (and delay() calls it too), so reading the IMU here keeps it serviced through SD write stalls;
+// the samples are queued and processed by loop() with their own timestamps. The core's default
+// yield() only dispatches serialEvent*() (not used here) and EventResponder, kept below.
+void yield() {
+  imu.background();
+  if (yield_active_check_flags & YIELD_CHECK_EVENT_RESPONDER) EventResponder::runFromYield();
 }
 
 void loop() {
