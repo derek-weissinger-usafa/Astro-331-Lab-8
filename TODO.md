@@ -1,8 +1,9 @@
 # Lab 8 to-do list
 
-Living list, newest priorities first. Last updated 2026-10-15 after the static IMU test
+Living list, newest priorities first. Last updated 2026-10-20 (IMU INT/RST fixes, STATIC_0009; DEMO_0001 findings). Earlier: 2026-10-15 static IMU test
 (`test_runs/STATIC_0001_analysis.html`). Tick items off and add notes as you go.
 Background on earlier findings: `HANDOFF_2026-10-15.md`. Commands and firmware details: `CLAUDE.md`.
+**Everything done so far, for reports: `PROGRESS_LOG.md`.**
 
 **Who:** 🔧 = hands-on / hardware (team) · 💻 = firmware or analysis (can be done with Claude) · 🧪 = test on the table
 
@@ -30,8 +31,9 @@ Background on earlier findings: `HANDOFF_2026-10-15.md`. Commands and firmware d
     `getSensorEvent()` keeps only the last report of each transfer, and gyro+accel+mag at 100 Hz often
     share one. Fixed (own SH2 callback + queue). First check, idle, SD off: `miss=0`, `maxgap=11` ms,
     `lat` < 0.05 ms. With SD on: `miss=102, lat=40` → yield() servicing → `miss=12, lat=43` → SD
-    DMA mode (uploaded, **untested**). Next: 5-min `BEGIN STATIC TEST`, then `STATUS`; expect `miss`≈0,
-    `lat` a few ms. If `sd=off`, DMA mode isn't detecting the card.
+    DMA mode → STATIC_0008 (`miss=370`, 314 from 2 chip resets) → INT edge-triggered reads + 5 ms
+    fallback → **STATIC_0009: 25 of ~29,250 lost (0.085%), max gap 90 ms, no resets. Solved.** The rest
+    are BNO085-internal 60–90 ms stalls (pairs ~22.4 s apart every ~132 s; not the calibration saves).
 - [ ] 🧪 **Repeat the static test with the 60 s calibration** (~30 min, motors off, table still,
       `BEGIN STATIC TEST`). Expect yaw drift **~6 °/h** instead of 27 °/h. Drop the CSV in `test_runs/`
       for analysis; the new `gyro_seq` columns will show exactly which samples were lost.
@@ -64,11 +66,13 @@ Background on earlier findings: `HANDOFF_2026-10-15.md`. Commands and firmware d
 
 - [x] **Interrupt-driven IMU reads** (INT pin 20, RST pin 21; `imu_bno085.cpp`). INT must NOT have the
       Teensy pull-up: with `INPUT_PULLUP` the line never read low and the chip sent nothing.
-- [ ] **Non-blocking SD logging** if gaps persist while logging: preallocated contiguous file + only
-      write when the card isn't busy (Teensy SDIO "logger" pattern), plus a `STOP LOG` command to close
-      the file cleanly (otherwise a power cut leaves empty space at the end, trimmed in analysis).
-- [ ] Decide the **IMU timeout** (100 ms now) after the diagnosis. Gaps > 100 ms disarm the wheels
-      when armed, which would cut a `DEMO SPIN` short.
+- [x] **SD stalls no longer starve the IMU** (IMU read in `yield()`, SD in DMA mode, skip writes while busy).
+      Optional: preallocated file + `STOP LOG` command, only if `lat` grows again.
+- [x] **IMU timeout** stays 100 ms: the remaining chip stalls are ≤ 90 ms, and the EKF now integrates
+      gaps up to 100 ms instead of skipping anything over 50 ms.
+- [ ] **Table balance (DEMO_0001 finding, `PROGRESS_LOG.md` §2.7):** the table is pendulous and rests
+      ~3° off level, so levelling saturates the wheels in ~1 s. Options (deferred): trim the balance;
+      `DEMO SPIN` holds the natural resting tilt and spins about the vertical; `BALANCE` command.
 - [ ] **Retune EKF noise** from the static test: gyro noise 1e-3 → ~3e-4 rad/s/√Hz; accel σ 0.036 → ~0.01
       (measured ~0.002; leave room for wheel vibration).
 - [ ] **Wheel speed loop:** add static-friction compensation (wheels don't move until ~27–29 rpm

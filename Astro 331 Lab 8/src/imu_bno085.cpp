@@ -8,7 +8,9 @@ static constexpr uint32_t kAccelIntervalUs = 10000;  // 100 Hz
 static constexpr uint32_t kMagIntervalUs = 10000;    // 100 Hz (BNO085 max), logging only
 
 // If INT has not been seen for this long, read anyway (INT unwired/broken, or a missed edge).
-static constexpr uint32_t kFallbackPollUs = 20000;
+// 2026-10-20 logging test: lat = 19.5 ms with a 20 ms fallback, i.e. INT assertions were being
+// missed. An empty read is cheap (4-byte header), so poll often enough to bound that.
+static constexpr uint32_t kFallbackPollUs = 5000;
 // An INT edge older than this is stale (already used); fall back to the read time.
 static constexpr uint32_t kMaxEdgeAgeUs = 50000;
 // Sanity bound on a report's delay relative to its transfer.
@@ -73,15 +75,24 @@ bool Bno085Imu::enableReports() {
   const bool g = bno_.enableReport(SH2_GYROSCOPE_UNCALIBRATED, kGyroIntervalUs);
   const bool a = bno_.enableReport(SH2_ACCELEROMETER, kAccelIntervalUs);
   const bool m = bno_.enableReport(SH2_MAGNETIC_FIELD_UNCALIBRATED, kMagIntervalUs);
+  // Turn off the chip's own dynamic calibration and its periodic save of calibration data (DCD)
+  // to flash: we don't use them (gyro and mag are read uncalibrated; the EKF estimates gyro bias).
+  // This was a guess at the chip's periodic 60-120 ms output stalls (pairs ~22.4 s apart every
+  // ~132 s, sequence advancing with nothing sent); STATIC_0009 shows it did NOT remove them.
+  // Kept as harmless. Runtime-only settings, so re-applied after every chip reset.
+  const bool c = sh2_setCalConfig(0) == SH2_OK;
+  const bool d = sh2_setDcdAutoSave(false) == SH2_OK;
   inLib_ = wasIn;
-  return g && a && m;
+  return g && a && m && c && d;
 }
 
 // Read one transfer from the chip if it has data (INT low) or the fallback poll is due.
 // Reports in it arrive through onSensorEvent() and are queued.
 void Bno085Imu::service() {
   const uint32_t now = micros();
-  if (intPin_ >= 0 && digitalReadFast(intPin_) == HIGH &&
+  // Read if INT is low now OR fell since the last read: the chip pulses INT, so a level check
+  // alone can miss an assertion that ended before loop() looked.
+  if (intPin_ >= 0 && digitalReadFast(intPin_) == HIGH && !sEdgeFresh &&
       (uint32_t)(now - lastServiceUs_) < kFallbackPollUs) {
     return;  // nothing waiting
   }

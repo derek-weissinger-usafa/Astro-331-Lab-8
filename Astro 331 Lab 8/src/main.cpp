@@ -820,7 +820,10 @@ void loop() {
       lastGyroMs = millis();
       if (haveLastGyro) {
         const float dt = (uint32_t)(s.t_us - lastGyroUs) * 1.0e-6f;
-        if (dt > 0.0f && dt < 0.05f) {  // ignore stalls/glitches
+        // Integrate gaps up to the IMU timeout with the new sample's rate (the BNO085 stalls for
+        // 60-90 ms every ~22 s; skipping those would lose the rotation during them). Longer gaps
+        // are dropped (and disarm when Armed).
+        if (dt > 0.0f && dt <= params::kImuTimeoutMs * 1.0e-3f) {
           ekf.predict(s.v, dt);
           if (state == State::Armed) controlStep(dt);
         }
