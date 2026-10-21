@@ -130,6 +130,17 @@ What changed (`src/imu_bno085.cpp`, `src/main.cpp`, `src/data_logger.cpp`):
 - To confirm before submitting: slide 4 pass criteria (proposed thresholds), slide 16 GenAI format, Gowri's
   contributions, "2025 Fall" in the slide master, and adding a hardware photo.
 
+### 2.10 DEMO SPIN after balancing, and DEMO LEVEL (2026-10-21)
+- The team added balance weights. `test_runs/DEMO_0002.CSV`: six DEMO SPIN attempts. Every one stayed in the
+  Level phase (the spin never started) and stopped when wheel A reached the 55 rad/s limit, 2.2–3.7 s after ARM.
+- Roll came down from 4–7° to ~1–2° in ~1.3 s (looked level) but settled at ~2°, outside the ±1° needed to start
+  the spin. Holding 2° takes ~8 mN·m against gravity, which fills wheel A in ~3 s; the stop then brakes the wheels
+  and kicks the table (~8° roll swing).
+- The weights worked on pitch and stiffness: free-swing period 1.8 → 3.3 s (gravity's pull ~3× weaker), resting
+  pitch ≈ −0.3°. Roll still rests ≈ 3.3° (−y side heavy). Next: trim roll toward +y.
+- New **`DEMO LEVEL`** command: level, then hold level with no spin and no wheel bias until STOP / wheel limit;
+  reports the hold time. Prelim deck: new slide 14 "Data: DEMO SPIN After Balancing" (`Reports/figures/fig6_demo2_balanced.png`).
+
 ---
 
 ## 3. Open issues (details and owners in `TODO.md`)

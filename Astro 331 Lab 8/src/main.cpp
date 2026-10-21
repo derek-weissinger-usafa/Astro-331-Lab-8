@@ -170,7 +170,17 @@ static float demoTargetRate() {
   return cap < params::kDemoRequestedRateRadS ? cap : params::kDemoRequestedRateRadS;
 }
 
-static void startDemo(CommandLink& from) {
+// DEMO LEVEL summary: total time armed and how long level (within tolerance) was held.
+static void reportLevelHold(const char* why) {
+  char msg[112];
+  const Vec3 e = ekf.eulerRad() * kRadToDeg;
+  snprintf(msg, sizeof(msg), "# %s: armed %.1f s, level held %.1f s, roll %.2f pitch %.2f deg\n", why,
+           demo.elapsed(), demo.levelHoldTime(), e.x, e.y);
+  sayAll(msg);
+}
+
+// levelOnly: DEMO LEVEL (level and hold, no spin). Otherwise DEMO SPIN.
+static void startDemo(CommandLink& from, bool levelOnly) {
   if (state != State::Idle) {
     from.send("# DEMO REFUSED: not idle (wait for calibration / DISARM first)\n");
     return;
@@ -191,7 +201,7 @@ static void startDemo(CommandLink& from) {
 
   const float rate = demoTargetRate();
   ctrl.reset();
-  demo.start(ekf.quaternion(), rate);
+  demo.start(ekf.quaternion(), rate, levelOnly);
   ctrl.setTrajectory(demo.ref().q, demo.ref().w, demo.ref().a);
   for (int i = 0; i < kN; i++) {
     speedLoops[i].reset();
@@ -199,9 +209,14 @@ static void startDemo(CommandLink& from) {
   }
   state = State::Armed;
   char msg[128];
-  snprintf(msg, sizeof(msg), "# DEMO START: leveling, then spin CCW to %.2f rad/s (%.1f rpm)%s%s\n", rate,
-           rate * 60.0f / 6.2831853f, logger.sdActive() ? ", log " : "",
-           logger.sdActive() ? logger.fileName() : "");
+  if (levelOnly) {
+    snprintf(msg, sizeof(msg), "# DEMO LEVEL START: leveling, then holding level (STOP to end)%s%s\n",
+             logger.sdActive() ? ", log " : "", logger.sdActive() ? logger.fileName() : "");
+  } else {
+    snprintf(msg, sizeof(msg), "# DEMO START: leveling, then spin CCW to %.2f rad/s (%.1f rpm)%s%s\n", rate,
+             rate * 60.0f / 6.2831853f, logger.sdActive() ? ", log " : "",
+             logger.sdActive() ? logger.fileName() : "");
+  }
   sayAll(msg);
 }
 
@@ -210,6 +225,7 @@ static void stopDemo(CommandLink& from) {
     from.send("# STOP: no demo running\n");
     return;
   }
+  if (demo.levelOnly()) reportLevelHold("DEMO LEVEL STOPPED");
   switch (demo.requestStop()) {
     case DemoSpin::Event::Complete:
       disarm("DEMO_STOPPED");  // stopped while leveling: nothing is spinning
@@ -436,7 +452,10 @@ static void handleCommand(const Command& c, CommandLink& from) {
       break;
     }
     case Cmd::DemoSpin:
-      startDemo(from);
+      startDemo(from, false);
+      break;
+    case Cmd::DemoLevel:
+      startDemo(from, true);
       break;
     case Cmd::Calibrate:
       startCalibration(c, from);
@@ -542,9 +561,13 @@ static void controlStep(float dt) {
     const Vec3 e = ekf.eulerRad();
     switch (demo.step(dt, e.x, e.y)) {
       case DemoSpin::Event::Leveled: {
-        char msg[64];
-        snprintf(msg, sizeof(msg), "# DEMO LEVEL: spinning up to %.1f rpm\n",
-                 demo.targetRate() * 60.0f / 6.2831853f);
+        char msg[80];
+        if (demo.levelOnly()) {
+          snprintf(msg, sizeof(msg), "# DEMO LEVEL: level after %.1f s, holding\n", demo.elapsed());
+        } else {
+          snprintf(msg, sizeof(msg), "# DEMO LEVEL: spinning up to %.1f rpm\n",
+                   demo.targetRate() * 60.0f / 6.2831853f);
+        }
         sayAll(msg);
         break;
       }
@@ -570,7 +593,8 @@ static void controlStep(float dt) {
     float wmax = 0.0f;
     for (int i = 0; i < kN; i++) wmax = fmaxf(wmax, fabsf(wheels[i].speed()));
     if (wmax > params::kDemoWheelAbortRadS) {
-      if (demo.phase() == DemoPhase::Level) {
+      if (demo.phase() == DemoPhase::Level || demo.phase() == DemoPhase::LevelHold) {
+        if (demo.levelOnly()) reportLevelHold("DEMO LEVEL WHEEL LIMIT");
         disarm("DEMO_WHEEL_LIMIT");
         return;
       }

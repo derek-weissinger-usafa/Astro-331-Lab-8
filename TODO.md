@@ -70,9 +70,12 @@ Background on earlier findings: `HANDOFF_2026-10-15.md`. Commands and firmware d
       Optional: preallocated file + `STOP LOG` command, only if `lat` grows again.
 - [x] **IMU timeout** stays 100 ms: the remaining chip stalls are ≤ 90 ms, and the EKF now integrates
       gaps up to 100 ms instead of skipping anything over 50 ms.
-- [ ] **Table balance (DEMO_0001 finding, `PROGRESS_LOG.md` §2.7):** the table is pendulous and rests
-      ~3° off level, so levelling saturates the wheels in ~1 s. Options (deferred): trim the balance;
-      `DEMO SPIN` holds the natural resting tilt and spins about the vertical; `BALANCE` command.
+- [ ] 🔧 **Trim roll balance (DEMO_0002, `PROGRESS_LOG.md` §2.10):** weights fixed pitch (≈ −0.3°) and cut
+      gravity's pull ~3×, but roll still rests ≈ 3.3° (−y / wheel D side heavy → move weight toward +y /
+      wheel B; ≈ 15 mN·m, e.g. ~50 g by ~3 cm; check with a bubble level first).
+- [ ] 🧪 **`DEMO LEVEL`** after each trim: reports how long level was held before a wheel limit.
+- [ ] 💻 Optional: ramp the wheels down on a demo stop instead of braking (the brake kicks the table);
+      `BALANCE` command; DEMO SPIN holding the natural tilt.
 - [ ] **Retune EKF noise** from the static test: gyro noise 1e-3 → ~3e-4 rad/s/√Hz; accel σ 0.036 → ~0.01
       (measured ~0.002; leave room for wheel vibration).
 - [ ] **Wheel speed loop:** add static-friction compensation (wheels don't move until ~27–29 rpm

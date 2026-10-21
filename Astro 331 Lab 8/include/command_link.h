@@ -19,6 +19,10 @@
 //   DEMO SPIN      demo: level from <=30 deg tilt (keeping heading), spin up CCW about +z over
 //                  10 s to the highest rate the wheels' momentum allows (<= 30 rpm), hold 10 s,
 //                  spin down over 10 s, settle 3 s, then Idle. From Idle only, wheels stopped.
+//   DEMO LEVEL     level-and-hold test: same leveling as DEMO SPIN (keeps heading), then hold
+//                  level indefinitely with no spin and no wheel bias, until STOP / KILL / a
+//                  wheel reaches kDemoWheelAbortRadS. Reports when level is reached and how
+//                  long it was held. From Idle only, wheels stopped; logs DEMO_####.CSV.
 //   STOP           controlled end of the demo (spin down from the current rate); KILL is the
 //                  emergency stop (brakes the wheels, which also stops the table abruptly)
 //   CALIBRATE [s]  redo the static gyro-bias calibration (Idle only; keep still). Optional
@@ -27,7 +31,7 @@
 //                  mag_map.h (~11 min) while logging to MAGMAP_####.CSV; table must be FIXED.
 //                  STOP / DISARM / KILL end it (wheels stop, logging continues).
 enum class Cmd : uint8_t { None, Arm, Disarm, Kill, Status, Ping, Test, Speed, Counts, Zero,
-                           BeginStatic, DemoSpin, Stop, Calibrate, MagMap, Unknown };
+                           BeginStatic, DemoSpin, DemoLevel, Stop, Calibrate, MagMap, Unknown };
 
 struct Command {
   static constexpr int kAllWheels = 4;

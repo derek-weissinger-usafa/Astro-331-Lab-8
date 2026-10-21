@@ -7,8 +7,10 @@ static constexpr float kPi = 3.14159265f;
 // Level attitude with yaw psi (inertial -> body): conj of an active rotation by psi about z.
 static Quat levelQuat(float psi) { return qconj(qFromRotVec({0.0f, 0.0f, psi})); }
 
-void DemoSpin::start(const Quat& qStart, float targetRate) {
-  target_ = targetRate;
+void DemoSpin::start(const Quat& qStart, float targetRate, bool levelOnly) {
+  levelOnly_ = levelOnly;
+  target_ = levelOnly ? 0.0f : targetRate;
+  elapsed_ = 0.0f;
   rate_ = acc_ = 0.0f;
   t_ = 0.0f;
   levelOkT_ = 0.0f;
@@ -42,6 +44,7 @@ void DemoSpin::setSpinRef() {
 DemoSpin::Event DemoSpin::step(float dt, float roll, float pitch) {
   const float T = params::kDemoRampS;
   t_ += dt;
+  elapsed_ += dt;
   switch (phase_) {
     case DemoPhase::Level: {
       if (t_ < levelT_) {
@@ -57,6 +60,11 @@ DemoSpin::Event DemoSpin::step(float dt, float roll, float pitch) {
       } else {
         levelOkT_ = 0.0f;
       }
+      if (levelOkT_ >= params::kDemoLevelHoldS && levelOnly_) {
+        phase_ = DemoPhase::LevelHold;  // keep the same level reference
+        t_ = 0.0f;
+        return Event::Leveled;
+      }
       if (levelOkT_ >= params::kDemoLevelHoldS) {
         phase_ = DemoPhase::SpinUp;
         t_ = 0.0f;
@@ -64,9 +72,12 @@ DemoSpin::Event DemoSpin::step(float dt, float roll, float pitch) {
         setSpinRef();
         return Event::Leveled;
       }
-      if (t_ > levelT_ + params::kDemoLevelTimeoutS) return Event::LevelTimeout;
+      if (!levelOnly_ && t_ > levelT_ + params::kDemoLevelTimeoutS) return Event::LevelTimeout;
       return Event::None;
     }
+    case DemoPhase::LevelHold:
+      setLevelRef(1.0f, 0.0f, 0.0f);  // hold level at the start heading until stopped
+      return Event::None;
     case DemoPhase::SpinUp: {
       Event ev = Event::None;
       if (t_ >= T) {
@@ -130,6 +141,7 @@ DemoSpin::Event DemoSpin::step(float dt, float roll, float pitch) {
 DemoSpin::Event DemoSpin::requestStop() {
   switch (phase_) {
     case DemoPhase::Level:
+    case DemoPhase::LevelHold:
       phase_ = DemoPhase::Off;
       return Event::Complete;
     case DemoPhase::SpinUp:
@@ -144,6 +156,7 @@ DemoSpin::Event DemoSpin::requestStop() {
 }
 
 float DemoSpin::wheelBias() const {
+  if (levelOnly_) return 0.0f;  // DEMO LEVEL: full wheel speed range for holding level
   switch (phase_) {
     case DemoPhase::Off:
       return 0.0f;
@@ -164,6 +177,7 @@ char DemoSpin::phaseChar() const {
     case DemoPhase::Hold: return 'H';
     case DemoPhase::SpinDown: return 'D';
     case DemoPhase::Settle: return 'S';
+    case DemoPhase::LevelHold: return 'K';
     default: return '-';
   }
 }

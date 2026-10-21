@@ -40,7 +40,9 @@ static Command parseLine(char* line) {
     c.cmd = (a && !strcmp(a, "MAP")) ? Cmd::MagMap : Cmd::Unknown;
   } else if (!strcmp(tok, "DEMO")) {
     char* a = strtok_r(nullptr, " \t,", &save);
-    c.cmd = (a && !strcmp(a, "SPIN")) ? Cmd::DemoSpin : Cmd::Unknown;
+    c.cmd = (a && !strcmp(a, "SPIN"))    ? Cmd::DemoSpin
+            : (a && !strcmp(a, "LEVEL")) ? Cmd::DemoLevel
+                                         : Cmd::Unknown;
   } else if (!strcmp(tok, "BEGIN")) {
     char* a = strtok_r(nullptr, " \t,", &save);
     char* b = strtok_r(nullptr, " \t,", &save);
