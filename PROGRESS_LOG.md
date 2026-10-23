@@ -141,6 +141,16 @@ What changed (`src/imu_bno085.cpp`, `src/main.cpp`, `src/data_logger.cpp`):
 - New **`DEMO LEVEL`** command: level, then hold level with no spin and no wheel bias until STOP / wheel limit;
   reports the hold time. Prelim deck: new slide 14 "Data: DEMO SPIN After Balancing" (`Reports/figures/fig6_demo2_balanced.png`).
 
+### 2.11 DEMO LEVEL tests after the roll trim — `test_runs/DEMO_LEVEL_analysis.html`
+- `test_runs/DEMO_0003.CSV` (saved on the SD card as DEMO_0002): five `DEMO LEVEL` runs. All reached level
+  (±1° for 3 s) 5–6 s after the command and held steadily (roll/pitch σ ≤ 0.07°, heading within 0.5°) for
+  2.0, 5.4, 7.0, 6.9 and **15.8 s** (20.8 s armed) before wheel B hit 55 rad/s.
+- Leftover gravity torque fell from ≈ 8 mN·m (roll) to 1.3–3.3 mN·m (now pitch), so the pitch wheel (B) saturates.
+- The tilt held while "level" (0.3–0.8° pitch, ≤ 0.2° roll, IMU frame) equals torque ÷ Kp: the expected PD
+  steady-state error. A visibly larger deck tilt would be IMU mounting offset (to measure with a bubble level).
+- Yaw disturbance ≈ 0.12 mN·m → ≈ 6–7 min of heading hold if roll/pitch hold the table's natural rest tilt
+  (now within ≈ 0.5° of level) instead of exact level. Figure: `Reports/figures/fig7_demo_level.png`.
+
 ---
 
 ## 3. Open issues (details and owners in `TODO.md`)
