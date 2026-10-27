@@ -37,7 +37,28 @@ static Command parseLine(char* line) {
     c.cmd = Cmd::Stop;
   } else if (!strcmp(tok, "MAG")) {
     char* a = strtok_r(nullptr, " \t,", &save);
-    c.cmd = (a && !strcmp(a, "MAP")) ? Cmd::MagMap : Cmd::Unknown;
+    c.cmd = (a && !strcmp(a, "MAP"))   ? Cmd::MagMap
+            : (a && !strcmp(a, "ON"))  ? Cmd::MagAidOn
+            : (a && !strcmp(a, "OFF")) ? Cmd::MagAidOff
+                                       : Cmd::Unknown;
+  } else if (!strcmp(tok, "KICK")) {
+    char* v = strtok_r(nullptr, " \t,", &save);
+    c.cmd = v ? Cmd::Kick : Cmd::Unknown;
+    if (v) c.value = (float)atof(v);
+  } else if (!strcmp(tok, "WHEEL")) {
+    char* w = strtok_r(nullptr, " \t,", &save);
+    char* a = strtok_r(nullptr, " \t,", &save);
+    const bool on = a && !strcmp(a, "ON"), off = a && !strcmp(a, "OFF");
+    if (w && w[0] >= 'A' && w[0] <= 'D' && w[1] == '\0' && (on || off)) {
+      c.cmd = Cmd::Wheel;
+      c.wheel = w[0] - 'A';
+      c.value = on ? 1.0f : 0.0f;
+    } else {
+      c.cmd = Cmd::Unknown;
+    }
+  } else if (!strcmp(tok, "RAW")) {
+    char* a = strtok_r(nullptr, " \t,", &save);
+    c.cmd = (a && !strcmp(a, "ON")) ? Cmd::RawOn : (a && !strcmp(a, "OFF")) ? Cmd::RawOff : Cmd::Unknown;
   } else if (!strcmp(tok, "DEMO")) {
     char* a = strtok_r(nullptr, " \t,", &save);
     c.cmd = (a && !strcmp(a, "SPIN"))    ? Cmd::DemoSpin

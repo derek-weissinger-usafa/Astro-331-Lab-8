@@ -9,6 +9,30 @@ Background on earlier findings: `HANDOFF_2026-10-15.md`. Commands and firmware d
 
 ---
 
+## 0. Magnetometer yaw aid (2026-10-27, fixed table) — IN PROGRESS, not yet within ±1°
+
+Firmware (built and flashed): `mag_aid.h/.cpp` + `AttitudeEKF::updateMagYaw` (heading-only update, also
+estimates the z gyro bias). Commands: `MAG ON`/`MAG OFF` (on by default), `KICK <deg>` (test: offset the yaw
+estimate), `RAW ON/OFF` (100 Hz raw USB stream), `WHEEL <A-D> ON|OFF`. Encoder-fault detection now
+disables a wheel automatically. Raw data: `test_runs/MAGCAL_2026-10-27_t1..t4_*.txt`.
+- [ ] 🔧 **Wheel D encoder is broken** (one quadrature channel dead: counts stay ~0 while D spins at ~500 rpm,
+      ±1 flicker and fake −165 rad/s spikes while still). Check D's yellow (pin 9) / white (pin 5) wires and the
+      encoder board. Until fixed: `WHEEL D OFF` after every boot (the fault detector also trips it).
+- [x] Findings: a stopped wheel's field depends on where its shaft stopped (1–5 µT ≈ 3–13°); a spinning wheel's
+      mean field is repeatable and nearly speed-independent, but **reversing a wheel shifts it 0.6–1.6 µT**
+      (modelled: `kDirStep`, `kSpeedSlope`, residual ≤ 0.8° per wheel alone). Horizontal field ≈ 21.5 µT
+      (1 µT ≈ 2.7°).
+- [x] Wheels stopped: works. A 10° yaw error decays with τ ≈ 25 s (−10° → −1.5° in 50 s).
+- [ ] 💻 Wheels spinning: the aid is gated too often — wheel C's (and B's) speed oscillation dips below the
+      5 rad/s threshold, and every dip restarts the 2 s settle. Fix: low-pass/hysteresis on the wheel-state
+      decision and don't restart the settle on one gated sample.
+- [ ] 💻 Model error in mixed A/B/C direction combos reached 1.5–2.9° (single wheels ≤ 0.8°): superposition
+      isn't exact. Re-map with combos (`tools/mag_cal.py` covers single wheels only) or gate reversals.
+- [ ] 💻 A reference re-learned while yaw carries an error inherits it (seen after a `KICK` during spinning).
+      Only re-learn when the aid was applying updates shortly before.
+- [ ] 🧪 After fixes: repeat test 4 (kick recovery stopped + spinning, 8 direction combos), then a ≥ 30 min drift
+      run. Table hard-iron (rotates with the body) is not modelled; matters only for big yaw slews.
+
 ## 1. Next session: upload and diagnose (in this order)
 
 - [ ] 💻 **Upload the latest `main`** to the Teensy (USB, COM3):

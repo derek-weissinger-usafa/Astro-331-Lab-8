@@ -30,14 +30,20 @@
 //   MAG MAP        magnetometer disturbance map: step the wheels through the schedule in
 //                  mag_map.h (~11 min) while logging to MAGMAP_####.CSV; table must be FIXED.
 //                  STOP / DISARM / KILL end it (wheels stop, logging continues).
+//   WHEEL <A-D> ON|OFF  take a wheel out of service / back in (Idle only). A disabled wheel is
+//                  never driven; control allocates over the rest. Encoder faults disable it too.
+//   MAG ON | MAG OFF  magnetometer heading aid on (default) / off (gyro-only yaw), mag_aid.h
+//   KICK <deg>     test: rotate the yaw ESTIMATE by deg (the aid should pull it back)
+//   RAW ON | RAW OFF  USB only in practice: stream one raw row per magnetometer sample (~100 Hz)
+//                  instead of the 20 Hz estimator CSV (magnetometer calibration data, see main.cpp)
 enum class Cmd : uint8_t { None, Arm, Disarm, Kill, Status, Ping, Test, Speed, Counts, Zero,
-                           BeginStatic, DemoSpin, DemoLevel, Stop, Calibrate, MagMap, Unknown };
+                           BeginStatic, DemoSpin, DemoLevel, Stop, Calibrate, MagMap, RawOn, RawOff, Wheel, MagAidOn, MagAidOff, Kick, Unknown };
 
 struct Command {
   static constexpr int kAllWheels = 4;
   Cmd cmd = Cmd::None;
   int wheel = -1;    // Test/Speed: 0..3 for A..D; Speed also accepts kAllWheels
-  float value = 0;   // Test: duty. Speed: rpm. BeginStatic: wheel rpm (if hasValue)
+  float value = 0;   // Wheel: 1 on / 0 off. Test: duty. Speed: rpm. BeginStatic: wheel rpm (if hasValue)
   bool hasValue = false;  // BeginStatic: an rpm was given
 };
 

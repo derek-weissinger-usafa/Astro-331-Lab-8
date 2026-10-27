@@ -35,6 +35,13 @@ constexpr float kWheelMaxSpeedRadS = 60.0f;    // command limit (~573 rpm); well
 // Manual (SPEED) mode feedforward. Same motors, so same measured value as above.
 constexpr float kManualFreeSpeedRadS = 160.0f;
 constexpr float kWheelOverspeedRadS = 70.0f;   // measured speed above this => disarm
+// Encoder fault detection: |duty| above kEncFaultDuty with |speed| below kEncFaultSpeedRadS for
+// kEncFaultTimeS (the motor alone reaches ~160 rad/s per unit duty), or a speed change faster
+// than kEncFaultMaxAccelRadS2 (stall torque / wheel J is ~1000 rad/s^2), disables the wheel.
+constexpr float kEncFaultDuty = 0.2f;
+constexpr float kEncFaultSpeedRadS = 1.0f;
+constexpr float kEncFaultTimeS = 0.5f;
+constexpr float kEncFaultMaxAccelRadS2 = 3000.0f;
 constexpr float kWheelCmdLeadRadS = 13.0f;    // setpoint may lead measured speed by at most this
 constexpr float kNullBiasRadS = 0.0f;        // 4-wheel null-mode speed target (0 = just hold it)
 constexpr float kNullGain = 5.0f;             // 1/s
@@ -91,6 +98,21 @@ constexpr float kStaticTestWheelRpm = 100.0f;
 
 // ---- Magnetometer disturbance map ("MAG MAP", schedule in mag_map.h) ----
 constexpr uint32_t kMagMapStepMs = 20000;  // hold per step (ramp ~1-2 s + settled average)
+
+// ---- Magnetometer heading aid (mag_aid.h; calibrated 2026-10-27) ----
+constexpr float kMagLpfTauS = 0.5f;         // low-pass on the corrected field (motor noise is 3-50 Hz)
+constexpr float kMagStillRadS = 0.05f;      // all enabled wheels below this (and counts fixed) = Stopped
+constexpr float kMagMinWheelRadS = 5.0f;    // all enabled wheels above this (~50 rpm) = Spinning
+constexpr float kMagRefSpeedRadS = 10.47f;  // speed model reference (100 rpm)
+constexpr float kMagSettleStillS = 1.5f;    // after the wheels stop / start before the field is used
+constexpr float kMagSettleSpinS = 2.0f;
+constexpr float kMagLearnStillS = 3.0f;     // reference averaging time per state
+constexpr float kMagLearnSpinS = 10.0f;
+constexpr long kMagStoppedCountTol = 1;     // encoder counts a stopped wheel may differ from its reference
+constexpr float kMagHorizTolFrac = 0.15f;   // gate if the horizontal field strength is off by more
+// Heading noise fed to the EKF per sample (100 Hz). Deliberately large: the low-passed samples are
+// strongly correlated, and the aid should only remove slow gyro drift (~30 s time constant).
+constexpr float kMagHeadingSigmaRad = 0.3f;
 
 // ---- IMU sample-loss diagnostics ----
 constexpr float kImuGapMs = 15.0f;  // gyro interval above this (nominal 10 ms) counts as a gap

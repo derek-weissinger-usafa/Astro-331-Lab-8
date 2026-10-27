@@ -44,6 +44,7 @@ struct EkfParams {
 };
 
 enum class AccelResult : uint8_t { Applied, GatedMagnitude, Singular };
+enum class MagResult : uint8_t { Applied, Gated, Singular };
 
 class AttitudeEKF {
  public:
@@ -58,6 +59,16 @@ class AttitudeEKF {
 
   // Apply one accelerometer sample (m/s^2, body frame).
   AccelResult updateAccel(const Vec3& accel);
+
+  // Heading-only magnetometer update. magBody: field (any units) with the wheel/table
+  // disturbances already removed (mag_aid.h); refInertial: the same field in the inertial frame
+  // at yaw 0 (captured at calibration). Only the horizontal directions are compared, the
+  // correction acts on yaw alone (never roll/pitch), and it is the only update that moves the
+  // z gyro bias. sigmaRad: 1-sigma heading noise per sample.
+  MagResult updateMagYaw(const Vec3& magBody, const Vec3& refInertial, float sigmaRad);
+  float lastMagInnovRad() const { return lastMagInnovRad_; }  // last heading residual
+  // Test hook (KICK): rotate the estimate about inertial z by rad (covariance unchanged).
+  void perturbYaw(float rad);
 
   Quat quaternion() const { return q_; }                 // inertial -> body
   Vec3 gyroBias() const { return b_; }                   // rad/s
@@ -74,4 +85,5 @@ class AttitudeEKF {
   Vec3 omega_{0.0f, 0.0f, 0.0f};
   Mat<6, 6> P_;
   bool initialized_ = false;
+  float lastMagInnovRad_ = 0.0f;
 };

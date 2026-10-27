@@ -8,6 +8,7 @@
 #include "demo_spin.h"
 #include "frames.h"
 #include "imu_bno085.h"
+#include "mag_aid.h"
 #include "mag_map.h"
 #include "pins.h"
 #include "wheel_geometry.h"
@@ -31,6 +32,10 @@ static CommandLink xbee(XBEE_SERIAL);
 static CommandLink usb(Serial);
 static DataLogger logger(XBEE_SERIAL);
 static DemoSpin demo;
+static MagAid magAid;  // magnetometer heading aid (mag_aid.h)
+static uint32_t lastMagUs = 0;
+static bool haveLastMag = false;
+static MagResult lastMagResult = MagResult::Gated;
 
 // Serial8's built-in TX buffer is only 40 bytes; without this, any line longer than
 // that (data rows, STATUS replies) is always dropped by the non-blocking senders.
@@ -48,6 +53,12 @@ static WheelMotor wheels[kN] = {
 };
 static WheelSpeedLoop speedLoops[kN];
 static bool wheelEnabled[kN] = {true, true, true, true};  // fault-handling hook
+// Encoder fault detection (wheelLoop): a wheel driven hard that never shows speed, or whose
+// speed jumps faster than the motor could accelerate it, is disabled (wheelEnabled = false).
+// 2026-10-27: wheel D's encoder lost a channel; D spun at ~500 rpm reading 0 and glitched to
+// -165 rad/s while still, which disarmed and even drove D through its own speed loop.
+static float encFaultS[kN] = {0, 0, 0, 0};
+static float prevSpeed[kN] = {0, 0, 0, 0};
 static float wheelCmd[kN] = {0, 0, 0, 0};                 // wheel speed setpoints, rad/s
 static float manualTarget[kN] = {0, 0, 0, 0};             // SPEED targets; wheelCmd ramps to these
 static float manualSpeed[kN] = {0, 0, 0, 0};              // low-passed wheel speed, rad/s (Manual)
@@ -86,6 +97,8 @@ static float maxGyroGapMs = 0.0f;
 static uint32_t lastGyroUs = 0, lastGyroMs = 0;
 static bool haveLastGyro = false;
 static uint32_t lastUsbMs = 0, lastWheelUs = 0;
+// RAW ON: USB carries one raw row per magnetometer sample instead of the estimator CSV.
+static bool usbRaw = false;
 // 64-bit sample clock for log timestamps (micros() wraps every ~71.6 min).
 static uint64_t logClockUs = 0;
 static uint32_t logLastRawUs = 0;
@@ -292,11 +305,24 @@ static void printUsbTelemetry() {
   const Vec3 s = ekf.sigmaRad() * kRadToDeg;
   Serial.printf(
       "%lu,%.5f,%.5f,%.5f,%.5f,%.3f,%.3f,%.3f,%.4f,%.4f,%.4f,%.3f,%.3f,%.3f,%d,%.1f,%.1f,%.1f,%.1f,%c,"
-      "%.3f,%.3f,%.3f,%.3f\n",
+      "%.3f,%.3f,%.3f,%.3f,%c,%.2f\n",
       millis(), q.w, q.x, q.y, q.z, e.x, e.y, e.z, b.x, b.y, b.z, s.x, s.y, s.z,
       static_cast<int>(lastAccelResult), shownSpeed(0), shownSpeed(1), shownSpeed(2), shownSpeed(3),
       stateChar(), wheels[0].axisDuty(), wheels[1].axisDuty(), wheels[2].axisDuty(),
-      wheels[3].axisDuty());
+      wheels[3].axisDuty(), magAid.modeChar(), magAid.headingResidualDeg());
+}
+
+// RAW row (one per magnetometer sample): R,t_us,mag x/y/z (uT),encoder counts A-D,
+// wheel speed A-D (rad/s),duty A-D,gyro z (rad/s),EKF yaw (deg),state. Counts give each motor
+// shaft's angle (64 counts per motor turn), which sets the static field of its magnets.
+static void printRawRow(uint32_t tUs) {
+  const Vec3& m = latestMag;
+  Serial.printf("R,%lu,%.3f,%.3f,%.3f,%ld,%ld,%ld,%ld,%.2f,%.2f,%.2f,%.2f,%.3f,%.3f,%.3f,%.3f,%.5f,%.3f,%c,%c,%.2f\n",
+                (unsigned long)tUs, m.x, m.y, m.z, wheels[0].count(), wheels[1].count(), wheels[2].count(),
+                wheels[3].count(), wheels[0].speed(), wheels[1].speed(), wheels[2].speed(), wheels[3].speed(),
+                wheels[0].axisDuty(), wheels[1].axisDuty(), wheels[2].axisDuty(), wheels[3].axisDuty(),
+                latestGyro.z, ekf.eulerRad().z * kRadToDeg, stateChar(), magAid.modeChar(),
+                magAid.headingResidualDeg());
 }
 
 // One log row per gyro sample, stamped with that sample's arrival time.
@@ -328,6 +354,8 @@ static void logData(uint32_t sampleUs) {
   r.gyroSeq = lastGyroSeq;
   r.seqMissed = seqMissed;
   r.testStep = magStep;
+  r.magMode = magAid.modeChar();
+  r.magResidDeg = magAid.headingResidualDeg();
   if (demo.active()) {
     r.demoPhase = demo.phaseChar();
     r.rateRef = demo.rateRef();
@@ -438,7 +466,8 @@ static void handleCommand(const Command& c, CommandLink& from) {
       char msg[300];
       snprintf(msg, sizeof(msg),
                "S,%c,%.1f,%.1f,%.1f,sig_yaw=%.2f,%.0f,%.0f,%.0f,%.0f,sd=%s,drop=%lu,demo=%c,"
-               "miss=%lu,chipgap=%lu,maxgap=%.0f,lat=%.2f,int=%lu,svc=%lu/%lu,ev=%lu,rst=%lu,en=%lu/%d,intpin=%d\n",
+               "miss=%lu,chipgap=%lu,maxgap=%.0f,lat=%.2f,int=%lu,svc=%lu/%lu,ev=%lu,rst=%lu,en=%lu/%d,intpin=%d,"
+               "wheels=%c%c%c%c,mag=%c,mres=%.2f,bz=%.5f\n",
                stateChar(), e.x, e.y, e.z, s.z, wheels[0].speed(), wheels[1].speed(), wheels[2].speed(),
                wheels[3].speed(), logger.sdActive() ? logger.fileName() : "off",
                (unsigned long)logger.droppedRows(), demo.phaseChar(), (unsigned long)seqMissed,
@@ -447,7 +476,9 @@ static void handleCommand(const Command& c, CommandLink& from) {
                (unsigned long)imu.freshCount(),
                (unsigned long)imu.eventCount(), (unsigned long)imu.resetCount(),
                (unsigned long)imu.enableCount(), imu.lastEnableOk() ? 1 : 0,
-               kPinImuInt >= 0 ? digitalRead(kPinImuInt) : -1);
+               kPinImuInt >= 0 ? digitalRead(kPinImuInt) : -1, wheelEnabled[0] ? 'A' : '-',
+               wheelEnabled[1] ? 'B' : '-', wheelEnabled[2] ? 'C' : '-', wheelEnabled[3] ? 'D' : '-', magAid.modeChar(),
+               magAid.headingResidualDeg(), ekf.gyroBias().z * kRadToDeg);
       from.send(msg);
       break;
     }
@@ -469,6 +500,38 @@ static void handleCommand(const Command& c, CommandLink& from) {
       break;
     case Cmd::MagMap:
       startMagMap(from);
+      break;
+    case Cmd::Wheel: {
+      // WHEEL <A-D> ON|OFF: take a wheel out of (or back into) service. Idle only.
+      if (state != State::Idle) {
+        from.send("# WHEEL REFUSED: not idle\n");
+        break;
+      }
+      wheelEnabled[c.wheel] = c.value != 0.0f;
+      encFaultS[c.wheel] = 0.0f;
+      prevSpeed[c.wheel] = wheels[c.wheel].speed();
+      char msg[48];
+      snprintf(msg, sizeof(msg), "# WHEEL %c %s\n", 'A' + c.wheel, wheelEnabled[c.wheel] ? "ON" : "OFF");
+      sayAll(msg);
+      break;
+    }
+    case Cmd::MagAidOn:
+    case Cmd::MagAidOff:
+      magAid.setEnabled(c.cmd == Cmd::MagAidOn);
+      sayAll(magAid.enabled() ? "# MAG AID ON (relearns its references)\n" : "# MAG AID OFF (gyro-only yaw)\n");
+      break;
+    case Cmd::Kick: {
+      // KICK <deg>: test only - rotate the yaw estimate (not the table) to watch the aid pull it back.
+      ekf.perturbYaw(c.value * kDegToRad);
+      char msg[48];
+      snprintf(msg, sizeof(msg), "# KICK yaw estimate %+.1f deg\n", c.value);
+      sayAll(msg);
+      break;
+    }
+    case Cmd::RawOn:
+    case Cmd::RawOff:
+      usbRaw = c.cmd == Cmd::RawOn;
+      from.send(usbRaw ? "# RAW ON\n" : "# RAW OFF\n");
       break;
     case Cmd::BeginStatic: {
       // "BEGIN STATIC TEST [rpm]": SD log + all four wheels held at a constant speed (default
@@ -545,7 +608,7 @@ static const char* safetyViolation() {
   if (fabsf(e.x) > lim || fabsf(e.y) > lim) return "TILT";
   if (norm(ekf.bodyRate()) > params::kMaxRateRadS) return "RATE";
   for (int i = 0; i < kN; i++)
-    if (fabsf(wheels[i].speed()) > params::kWheelOverspeedRadS) return "WHEEL_OVERSPEED";
+    if (wheelEnabled[i] && fabsf(wheels[i].speed()) > params::kWheelOverspeedRadS) return "WHEEL_OVERSPEED";
   return nullptr;
 }
 
@@ -644,6 +707,21 @@ static void wheelLoop(float dt) {
     wheels[i].updateSpeed(dt);
     manualSpeed[i] += lpfA * (wheels[i].speed() - manualSpeed[i]);
   }
+  for (int i = 0; i < kN; i++) {
+    const float w = wheels[i].speed();
+    const bool jump = dt > 0.0f && fabsf(w - prevSpeed[i]) > params::kEncFaultMaxAccelRadS2 * dt;
+    prevSpeed[i] = w;
+    const bool stuck = fabsf(wheels[i].axisDuty()) > params::kEncFaultDuty && fabsf(w) < params::kEncFaultSpeedRadS;
+    encFaultS[i] = stuck ? encFaultS[i] + dt : 0.0f;
+    if (wheelEnabled[i] && (jump || encFaultS[i] > params::kEncFaultTimeS)) {
+      wheelEnabled[i] = false;
+      wheels[i].stop();
+      char msg[96];
+      snprintf(msg, sizeof(msg), "# WHEEL FAULT %c: %s - wheel disabled (WHEEL %c ON to re-enable)\n", 'A' + i,
+               jump ? "speed jump (encoder glitch)" : "driven but encoder shows no motion", 'A' + i);
+      sayAll(msg);
+    }
+  }
 
   const bool testing = testWheel >= 0 && (int32_t)(millis() - testEndMs) < 0;
   if (testWheel >= 0 && !testing) {
@@ -656,7 +734,7 @@ static void wheelLoop(float dt) {
 
   if (state == State::Manual) {
     for (int i = 0; i < kN; i++) {
-      if (fabsf(wheels[i].speed()) > params::kWheelOverspeedRadS) {
+      if (wheelEnabled[i] && fabsf(wheels[i].speed()) > params::kWheelOverspeedRadS) {
         disarm("WHEEL_OVERSPEED");
         return;
       }
@@ -664,7 +742,9 @@ static void wheelLoop(float dt) {
   }
 
   for (int i = 0; i < kN; i++) {
-    if (state == State::Manual) {
+    if (!wheelEnabled[i]) {
+      wheels[i].stop();  // disabled (fault or WHEEL x OFF): never driven, in any mode
+    } else if (state == State::Manual) {
       // Ramp the setpoint toward the SPEED target (limits overshoot and current surges).
       // The integrator is held while ramping so it doesn't wind up and overshoot at the end.
       const float step = params::kManualAccelRadS2 * dt;
@@ -753,8 +833,9 @@ static void handleCalibrationSample(const ImuSample& s) {
   sayAll(msg);
   Serial.println(
       "# t_ms,qw,qx,qy,qz,roll,pitch,yaw,bx,by,bz,sig_roll,sig_pitch,sig_yaw,accel_status,w0,w1,w2,w3,state,"
-      "dutyA,dutyB,dutyC,dutyD");
+      "dutyA,dutyB,dutyC,dutyD,mag_mode,mag_resid_deg");
   haveLastGyro = false;
+  magAid.reset();  // the stopped reference is learned now, at yaw 0
   state = State::Idle;
   sayAll("# READY (idle). Send ARM to hold level.\n");
 }
@@ -829,7 +910,25 @@ void loop() {
       latestGyro = s.v;
       trackGyroSequence(s);
     } else if (s.kind == ImuSample::Accel) latestAccel = s.v;
-    else if (s.kind == ImuSample::Mag) latestMag = s.v;  // logged only, never fused
+    else if (s.kind == ImuSample::Mag) {
+      latestMag = s.v;
+      const float dtMag = haveLastMag ? (uint32_t)(s.t_us - lastMagUs) * 1.0e-6f : 0.0f;
+      lastMagUs = s.t_us;
+      haveLastMag = true;
+      if (state != State::Calibrating && ekf.initialized() && dtMag > 0.0f && dtMag < 0.1f) {
+        long cnt[kN];
+        float spd[kN];
+        for (int i = 0; i < kN; i++) {
+          cnt[i] = wheels[i].count();
+          spd[i] = wheels[i].speed();
+        }
+        Vec3 mUse, ref;
+        lastMagResult = MagResult::Gated;
+        if (magAid.update(s.v, cnt, spd, wheelEnabled, ekf.quaternion(), dtMag, mUse, ref))
+          lastMagResult = ekf.updateMagYaw(mUse, ref, params::kMagHeadingSigmaRad);
+      }
+      if (usbRaw) printRawRow(s.t_us);
+    }
 
     if (state == State::Calibrating) {
       handleCalibrationSample(s);
@@ -872,7 +971,7 @@ void loop() {
   updateMagMap();
   logger.service();  // rows are produced per gyro sample above
 
-  if (state != State::Calibrating && millis() - lastUsbMs >= params::kUsbTelemetryMs) {
+  if (!usbRaw && state != State::Calibrating && millis() - lastUsbMs >= params::kUsbTelemetryMs) {
     lastUsbMs = millis();
     printUsbTelemetry();
   }

@@ -153,6 +153,16 @@ What changed (`src/imu_bno085.cpp`, `src/main.cpp`, `src/data_logger.cpp`):
 
 ---
 
+### 2.12 Magnetometer calibration and yaw aid (2026-10-27) — `Reports/Magnetometer_Yaw_Aid_Report_2026-10-27.md`
+- Fixed-table tests (raw 100 Hz USB stream): a stopped wheel's field depends on its shaft angle (1–5 µT ≈ 3–13°);
+  a spinning wheel's mean is repeatable and nearly speed-independent, but reversing it shifts the mean 0.6–1.6 µT.
+  Per-wheel direction/speed model fitted for A–C (≤ 0.8° per wheel).
+- Firmware: heading-only magnetometer EKF update (also estimates the z gyro bias), `mag_aid` module, `MAG ON/OFF`,
+  `KICK`, `RAW ON/OFF`, `WHEEL x ON|OFF`, automatic encoder-fault wheel disable.
+- Result: wheels stopped, a 10° yaw error decays with τ ≈ 25 s; wheels spinning, not yet within ±1°
+  (gating flicker, 1.4–2.9° error in mixed-direction combos).
+- **Wheel D's encoder has a dead channel** (D spun ~500 rpm reading 0). Repair before 4-wheel tests.
+
 ## 3. Open issues (details and owners in `TODO.md`)
 - **Table balance / pendulum** (§2.7): blocks levelling and attitude hold in roll/pitch.
 - **Wheel A rub and low pack A; wheel C high duty and oscillation.**
@@ -172,5 +182,6 @@ What changed (`src/imu_bno085.cpp`, `src/main.cpp`, `src/data_logger.cpp`):
 | `STATIC_0001.CSV`, `STATIC_0001_analysis.html` | First static IMU test: yaw drift, Allan variance, sample loss |
 | `STATIC_0005.CSV`, `STATIC_motors_off_vs_on_analysis.html` | Motors-on static test, warm-up bias, EKF replay |
 | `MAGMAP_0001.CSV`, `MAGMAP_0001_analysis.html` | Magnetometer offset vs wheel speed/direction |
+| `MAGCAL_2026-10-27_t1..t4_*.txt` | Magnetometer calibration and yaw-aid tests (§2.12, report in `Reports/`) |
 | `DEMO_0001.CSV` | First `DEMO SPIN` attempts on the air bearing (§2.7) |
 | `STATIC_0008.CSV`, `STATIC_0009.CSV` | IMU sample-loss verification after the INT/RST/SD fixes (§2.8) |

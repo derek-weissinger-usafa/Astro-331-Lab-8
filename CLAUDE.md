@@ -30,7 +30,7 @@ Astro 331 Lab 8/                 <- git root (README, CLAUDE.md, lab slides)
     └── test/                    <- PlatformIO unit tests
 ```
 
-**Progress record for the team / reports: `PROGRESS_LOG.md`.** **Open issues — see `TODO.md` (prioritised to-do list) and `HANDOFF_2026-10-15.md`:** the table is pendulous; after the balance weights (DEMO_0002) pitch is balanced but roll still rests ~3.3° off level (−y side heavy), so levelling saturates wheel A in ~3 s, wheel A rubs and its pack is ~1 V low, wheel C's high duty/oscillation is unexplained, and wheel speeds logged before 2026-10-15's gear-ratio fix read 1.6× low. Bench scripts are in `tools/` (`speed_sweep.py`, `wheel_hold.py`).
+**Progress record for the team / reports: `PROGRESS_LOG.md`.** **Magnetometer yaw aid (2026-10-27, in progress; heading-only EKF mag update in `mag_aid.h/.cpp`, wheel D encoder broken): `Reports/Magnetometer_Yaw_Aid_Report_2026-10-27.md`, TODO.md §0.** **Open issues — see `TODO.md` (prioritised to-do list) and `HANDOFF_2026-10-15.md`:** the table is pendulous; after the balance weights (DEMO_0002) pitch is balanced but roll still rests ~3.3° off level (−y side heavy), so levelling saturates wheel A in ~3 s, wheel A rubs and its pack is ~1 V low, wheel C's high duty/oscillation is unexplained, and wheel speeds logged before 2026-10-15's gear-ratio fix read 1.6× low. Bench scripts are in `tools/` (`speed_sweep.py`, `wheel_hold.py`).
 
 **Status:** Attitude determination is implemented (build-verified, not yet run on hardware). Everything lives in the PlatformIO project folder:
 - `include/frames.h` — frame/sign conventions (body z up, right-handed; x=roll, y=pitch, z=yaw; q is inertial→body, Hamilton, scalar-first). Read this before touching estimator or control math.

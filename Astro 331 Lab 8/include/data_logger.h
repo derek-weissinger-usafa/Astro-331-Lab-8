@@ -16,7 +16,8 @@
 //   qw,qx,qy,qz (inertial->body), roll/pitch/yaw (deg, 3-2-1), gyro bias x/y/z (rad/s),
 //   1-sigma roll/pitch/yaw (deg), accel_status (0 applied, 1 gated, 2 singular), state (C/I/A/M),
 //   demo_phase (-/L/U/H/D/S), rate_ref_rad_s, yaw_ref_deg (DEMO SPIN reference; 0 when off),
-//   gyro_seq (BNO085 report counter, 0-255), gyro_seq_missed (cumulative reports never received).
+//   gyro_seq (BNO085 report counter, 0-255), gyro_seq_missed (cumulative reports never received),
+//   test_step (MAG MAP step), mag_mode / mag_resid_deg (magnetometer heading aid, mag_aid.h).
 //   A row-to-row gyro_seq step > 1 = lost in transfer to the Teensy; an interval > 15 ms with a
 //   step of exactly 1 = the BNO085 itself sent late.
 //
@@ -43,6 +44,8 @@ struct LogRow {
   int gyroSeq = 0;           // BNO085 gyro report sequence number (0-255, +1 per report sent)
   uint32_t seqMissed = 0;    // cumulative gyro reports sent by the BNO085 but never received
   int testStep = -1;         // MAG MAP schedule step (0-based, see mag_map.h); -1 = not running
+  char magMode = '-';        // mag aid mode (MagAid::modeChar): - off, g gated, l/L learning, s/S in use
+  float magResidDeg = 0;     // last field heading minus its reference, deg
 };
 
 class DataLogger {

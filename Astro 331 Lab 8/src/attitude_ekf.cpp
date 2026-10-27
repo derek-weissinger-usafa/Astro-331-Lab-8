@@ -112,6 +112,58 @@ AccelResult AttitudeEKF::updateAccel(const Vec3& accel) {
   return AccelResult::Applied;
 }
 
+MagResult AttitudeEKF::updateMagYaw(const Vec3& magBody, const Vec3& refInertial, float sigmaRad) {
+  if (!initialized_) return MagResult::Singular;
+
+  // Measured field in the (estimated) inertial frame; compare its horizontal direction with the
+  // reference. With q_true = dq(dtheta) (x) q_hat, A_true = (I + [dtheta]x) A_hat, so the field
+  // seen through A_hat is the reference rotated by +eps about inertial z, eps = (A_hat ez).dtheta:
+  //   alpha = angle from ref_h to (A_hat^T m)_h = eps   =>   H = [ (A_hat ez)^T , 0 ]  (1x6)
+  const Mat<3, 3> A = qToMatrix(q_);
+  const Vec3 mI = {A(0, 0) * magBody.x + A(1, 0) * magBody.y + A(2, 0) * magBody.z,
+                   A(0, 1) * magBody.x + A(1, 1) * magBody.y + A(2, 1) * magBody.z,
+                   A(0, 2) * magBody.x + A(1, 2) * magBody.y + A(2, 2) * magBody.z};  // A^T m
+  const float hm = sqrtf(mI.x * mI.x + mI.y * mI.y);
+  const float hr = sqrtf(refInertial.x * refInertial.x + refInertial.y * refInertial.y);
+  if (hm < 1e-3f || hr < 1e-3f) return MagResult::Singular;
+  const float alpha = atan2f(refInertial.x * mI.y - refInertial.y * mI.x,
+                             refInertial.x * mI.x + refInertial.y * mI.y);
+
+  const float h[3] = {A(0, 2), A(1, 2), A(2, 2)};  // A_hat ez (body)
+  float PHt[6];
+  for (int i = 0; i < 6; i++) PHt[i] = P_(i, 0) * h[0] + P_(i, 1) * h[1] + P_(i, 2) * h[2];
+  const float S = PHt[0] * h[0] + PHt[1] * h[1] + PHt[2] * h[2] + sigmaRad * sigmaRad;
+  if (S <= 0.0f) return MagResult::Singular;
+
+  // Heading only: the gain on roll/pitch (the attitude error components perpendicular to h)
+  // is removed, so field errors can't tilt the estimate. The z bias is free here: heading is
+  // what makes it observable (the accelerometer update keeps it locked).
+  float K[6];
+  for (int i = 0; i < 6; i++) K[i] = PHt[i] / S;
+  const float kh = K[0] * h[0] + K[1] * h[1] + K[2] * h[2];
+  for (int i = 0; i < 3; i++) K[i] = kh * h[i];
+  K[3] = K[4] = 0.0f;  // x/y bias: leave to the accelerometer
+
+  // Joseph form for the (modified) gain: P = (I - K H) P (I - K H)^T + K R K^T
+  Mat<6, 6> IKH = Mat<6, 6>::identity();
+  for (int i = 0; i < 6; i++)
+    for (int j = 0; j < 3; j++) IKH(i, j) -= K[i] * h[j];
+  P_ = IKH * P_ * transpose(IKH);
+  const float rv = sigmaRad * sigmaRad;
+  for (int i = 0; i < 6; i++)
+    for (int j = 0; j < 6; j++) P_(i, j) += K[i] * rv * K[j];
+
+  q_ = qnormalize(qmul(qFromRotVec({K[0] * alpha, K[1] * alpha, K[2] * alpha}), q_));
+  b_.z += K[5] * alpha;
+  lastMagInnovRad_ = alpha;
+  return MagResult::Applied;
+}
+
+void AttitudeEKF::perturbYaw(float rad) {
+  const Mat<3, 3> A = qToMatrix(q_);
+  q_ = qnormalize(qmul(qFromRotVec({A(0, 2) * rad, A(1, 2) * rad, A(2, 2) * rad}), q_));
+}
+
 Vec3 AttitudeEKF::sigmaRad() const {
   return {sqrtf(P_(0, 0)), sqrtf(P_(1, 1)), sqrtf(P_(2, 2))};
 }
