@@ -128,6 +128,28 @@ the test 4 re-run on a fixed table.
 - Known limit: a `KICK` (artificial error) followed by a **new** direction pattern within 30 s is still
   learned into that pattern's reference. Real errors come only from gyro drift, which is ≤ 0.2° in 30 s.
 
+### 1.6 Test 5, 2026-10-29: spinning validation of the fixes (`MAGCAL_2026-10-29_t5_spinning_validation.txt`)
+Fixed table, D off. **Wheel C faulted 1.4 s into the first combo:** it needed > 0.4 duty to break away
+(normal ≈ 0.08), so the encoder-fault detector disabled it just as it started to move. That suggests a
+low pack C (battery check pending). **Only A and B were spinning**, so this validates the 2-wheel case.
+
+| Phase | Yaw (true 0) | Aid in use | Field residual while used |
+|---|---|---|---|
+| Stopped, no kick | ±0.03° | 86% | 0.09° rms |
+| Combos 1, 2, 5, 6 (no kick in or just before them) | within ±0.94° | 67–93% | 0.30–0.65° rms |
+| `KICK` while spinning (combos 3, 7) | 10° → ~1° in 60 s (τ ≈ 25 s) | 67–93% | — |
+| Repeated direction patterns (combos 7, 8) | stored references reused, no re-learn | 91–93% | — |
+| Stopped after `DISARM` | −0.85° (inherited from the combo 7 kick) | 87% | 0.18° rms |
+
+- The gating flicker is gone: the aid applied updates 67–93% of the time while spinning, against mostly
+  `L`/`g` in test 4.
+- The leftover ~0.9° traces to the artificial kicks: combo 4, combo 5 and the final stop learned their
+  references while a kick's error was still decaying (the known limit above).
+- `KICK +10` shows as −10° in the displayed Euler yaw (`perturbYaw` rotates about inertial +z, the
+  opposite sense to the displayed yaw). It's cosmetic: recovery is unaffected.
+- **Still to validate:** 3- and 4-wheel spinning (needs pack C checked and D's encoder repaired), and a
+  ≥ 30 min drift run.
+
 ---
 
 ## 2. What still needs to be done

@@ -30,7 +30,11 @@ disables a wheel automatically. Raw data: `test_runs/MAGCAL_2026-10-27_t1..t4_*.
 - [x] 💻 Reference inheriting a yaw error: references are now learned only within 30 s of an applied update
       (mode `x` = stale, gyro-only otherwise).
 - [x] 💻 Manual `SPEED x 0` holding current: a stopped wheel at target 0 is now released (no drive, PI reset).
-- [ ] 🧪 After fixes: repeat test 4 (kick recovery stopped + spinning, 8 direction combos), then a ≥ 30 min drift
+- [x] 🧪 Test 5 (2026-10-29, A+B only): spinning yaw within ±0.94° without kicks, kicks recover with
+      τ ≈ 25 s. Report §1.6.
+- [ ] 🔧 **Wheel C needed > 0.4 duty to start** in test 5 (fault detector disabled it). Check pack C voltage
+      (and all packs: 12.4–12.6 V, cells within 0.05 V) before more motor tests.
+- [ ] 🧪 Then: repeat test 5 with A, B, C (and D once repaired) (kick recovery stopped + spinning, 8 direction combos), then a ≥ 30 min drift
       run. Table hard-iron (rotates with the body) is not modelled; matters only for big yaw slews.
 
 ## 1. Next session: upload and diagnose (in this order)
