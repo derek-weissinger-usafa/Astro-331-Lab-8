@@ -751,6 +751,13 @@ static void wheelLoop(float dt) {
       const float diff = manualTarget[i] - wheelCmd[i];
       const bool ramping = fabsf(diff) > step;
       wheelCmd[i] += ramping ? (diff > 0.0f ? step : -step) : diff;
+      if (manualTarget[i] == 0.0f && wheelCmd[i] == 0.0f && fabsf(manualSpeed[i]) < params::kManualReleaseRadS) {
+        // Stopped at a 0 target: release the drive. The integrator otherwise held ~-0.06 duty in a
+        // stopped motor (2026-10-27), and that current moved the magnetometer by microtesla.
+        speedLoops[i].reset();
+        wheels[i].stop();
+        continue;
+      }
       wheels[i].setDuty(speedLoops[i].update(wheelCmd[i], manualSpeed[i], dt,
                                              params::kManualFreeSpeedRadS, !ramping),
                         dt);

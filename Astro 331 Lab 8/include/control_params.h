@@ -102,7 +102,15 @@ constexpr uint32_t kMagMapStepMs = 20000;  // hold per step (ramp ~1-2 s + settl
 // ---- Magnetometer heading aid (mag_aid.h; calibrated 2026-10-27) ----
 constexpr float kMagLpfTauS = 0.5f;         // low-pass on the corrected field (motor noise is 3-50 Hz)
 constexpr float kMagStillRadS = 0.05f;      // all enabled wheels below this (and counts fixed) = Stopped
-constexpr float kMagMinWheelRadS = 5.0f;    // all enabled wheels above this (~50 rpm) = Spinning
+// Spinning = every enabled wheel's low-passed |speed| above kMagSpinEnterRadS; it stays Spinning
+// until one drops below kMagSpinExitRadS (hysteresis: wheel C's speed oscillates +-30-90 rpm).
+constexpr float kMagSpinEnterRadS = 6.0f;   // ~57 rpm
+constexpr float kMagSpinExitRadS = 4.0f;    // ~38 rpm
+constexpr float kMagSpeedLpfTauS = 0.3f;
+// A reference may only be learned if a heading update was applied within this long (or the
+// startup calibration just ended), so it doesn't inherit drifted yaw. Gyro drift <= ~25 deg/h
+// => <= 0.2 deg in 30 s.
+constexpr float kMagLearnMaxGapS = 30.0f;
 constexpr float kMagRefSpeedRadS = 10.47f;  // speed model reference (100 rpm)
 constexpr float kMagSettleStillS = 1.5f;    // after the wheels stop / start before the field is used
 constexpr float kMagSettleSpinS = 2.0f;
@@ -130,6 +138,8 @@ constexpr float kManualAccelRadS2 = 20.0f;  // SPEED setpoint ramp rate (~190 rp
 // Extra first-order low-pass on measured wheel speed, Manual mode only (speed loop + USB
 // telemetry). Larger = smoother but more lag (more overshoot risk). 0 disables it.
 constexpr float kManualSpeedLpfTauS = 0.1f;
+// A Manual wheel with target 0, ramp finished and |speed| below this is released (no drive, PI reset).
+constexpr float kManualReleaseRadS = 0.3f;
 
 // ---- Demo: level, then spin counter-clockwise about +z (XBee "DEMO SPIN", "STOP") ----
 // Requested 30 rpm, but the rate actually used is capped by the wheels' z-momentum budget:

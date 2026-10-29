@@ -29,8 +29,9 @@ Raw captures are in `test_runs/MAGCAL_2026-10-27_t1..t4_*.txt` (see "Data" at th
 | Log columns | `src/data_logger.cpp` | SD/XBee rows end with `mag_mode,mag_resid_deg`. The USB estimator CSV has the same two columns appended. |
 | Recalibration tool | `tools/mag_cal.py` | Runs the test 3 speed sweep for chosen wheels and prints `kDirStep` / `kSpeedSlope` rows for `mag_aid.cpp`. Plain Python (PlatformIO's Python has pyserial but no numpy). **Written but not yet run.** |
 
-Mag-aid modes (`mag_mode` column / `STATUS mag=`): `-` off, `g` gated, `l` learning the stopped
-reference, `L` learning or settling for spinning, `s` in use (stopped), `S` in use (spinning).
+Mag-aid modes (`mag_mode` column / `STATUS mag=`): `-` off, `g` gated (or settling), `l` learning
+the stopped reference, `L` learning a spinning reference, `s` in use (stopped), `S` in use (spinning),
+`x` stale (needs a new reference but the yaw isn't fresh enough to learn one; added 2026-10-29).
 
 ### 1.2 Tests and findings
 
@@ -106,6 +107,26 @@ Disabled wheels are assumed not to move, so their field becomes part of both ref
   triggered a `WHEEL_OVERSPEED` disarm.
 - Diagnosis: **one quadrature channel is dead.** With one channel stuck, the other only toggles the
   count up and down, so the net count is zero.
+
+### 1.5 Follow-up, 2026-10-29: firmware fixes for the spinning case (built and flashed)
+
+These changes address items 3–6 of §2. **Only the stopped case has been re-tested** (motors off:
+`KICK +10` → −2.5° at 30 s, −1.1° at 60 s, −0.7° at 88 s, as before). The spinning case still needs
+the test 4 re-run on a fixed table.
+- **Hysteresis on the wheel state** (`kMagSpinEnterRadS` 6, `kMagSpinExitRadS` 4 rad/s, decided on
+  speeds low-passed at 0.3 s). A sample rejected by the field-strength gate no longer restarts the
+  settle; only a real change of wheel state or direction pattern does.
+- **One spinning reference per direction pattern** (sign of each enabled wheel, up to 16). Mixed-direction
+  combos no longer rely on single-wheel direction terms adding up, which is where the 1.4–2.9° came from.
+  The measured `kDirStep` is kept but is constant within a pattern.
+- **Learning guard:** a reference is learned only if a heading update was applied within
+  `kMagLearnMaxGapS` = 30 s (or right after calibration). Otherwise the aid shows mode `x` (stale) and
+  stays gyro-only until a state with a known reference returns.
+- **Manual-mode release:** a wheel at target 0 whose ramp has finished and whose speed is below
+  0.3 rad/s gets no drive, and its PI integrator is reset. No more ~−0.06 duty holding current in a
+  stopped motor.
+- Known limit: a `KICK` (artificial error) followed by a **new** direction pattern within 30 s is still
+  learned into that pattern's reference. Real errors come only from gyro drift, which is ≤ 0.2° in 30 s.
 
 ---
 
