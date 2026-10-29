@@ -7,6 +7,13 @@ static constexpr float kPi = 3.14159265f;
 // Level attitude with yaw psi (inertial -> body): conj of an active rotation by psi about z.
 static Quat levelQuat(float psi) { return qconj(qFromRotVec({0.0f, 0.0f, psi})); }
 
+// Attitude (inertial -> body) from 3-2-1 Euler angles; inverse of qToEuler321.
+static Quat quatFromEuler321(float roll, float pitch, float yaw) {
+  const Quat bodyToInertial = qmul(qmul(qFromRotVec({0.0f, 0.0f, yaw}), qFromRotVec({0.0f, pitch, 0.0f})),
+                                   qFromRotVec({roll, 0.0f, 0.0f}));
+  return qnormalize(qconj(bodyToInertial));
+}
+
 void DemoSpin::start(const Quat& qStart, float targetRate, bool levelOnly) {
   levelOnly_ = levelOnly;
   target_ = levelOnly ? 0.0f : targetRate;
@@ -15,6 +22,16 @@ void DemoSpin::start(const Quat& qStart, float targetRate, bool levelOnly) {
   t_ = 0.0f;
   levelOkT_ = 0.0f;
   yaw_ = qToEuler321(qStart).z;  // keep the current heading; only remove tilt
+
+  if (levelOnly) {
+    // DEMO LEVEL: start the rest-tilt reference at the current tilt (no slew to level).
+    const Vec3 e = qToEuler321(qStart);
+    rollRef_ = rollRest_ = e.x;
+    pitchRef_ = pitchRest_ = e.y;
+    phase_ = DemoPhase::Level;
+    setRestRef();
+    return;
+  }
 
   // Slew q_ref(s) = exp(s*phi) (x) qStart, s: 0 -> 1, from the start attitude to level.
   qStart_ = qnormalize(qStart);
@@ -34,6 +51,12 @@ void DemoSpin::setLevelRef(float s, float sdot, float sddot) {
   ref_.a = phi_ * (-sddot);
 }
 
+void DemoSpin::setRestRef() {
+  ref_.q = quatFromEuler321(rollRef_, pitchRef_, yaw_);
+  ref_.w = {0.0f, 0.0f, 0.0f};
+  ref_.a = {0.0f, 0.0f, 0.0f};
+}
+
 // Level, rotating about +z at rate_: w = (0, 0, rate) in the reference body frame.
 void DemoSpin::setSpinRef() {
   ref_.q = levelQuat(yaw_);
@@ -45,6 +68,30 @@ DemoSpin::Event DemoSpin::step(float dt, float roll, float pitch) {
   const float T = params::kDemoRampS;
   t_ += dt;
   elapsed_ += dt;
+  if (levelOnly_ && (phase_ == DemoPhase::Level || phase_ == DemoPhase::LevelHold)) {
+    // Reference tilt = measured tilt: no roll/pitch stiffness, only damping; heading stays held.
+    rollRef_ = roll;
+    pitchRef_ = pitch;
+    setRestRef();
+    float a = dt / params::kDemoRestAvgS;
+    if (a > 1.0f) a = 1.0f;
+    rollRest_ += (roll - rollRest_) * a;
+    pitchRest_ += (pitch - pitchRest_) * a;
+    if (phase_ == DemoPhase::Level) {
+      const float tol = params::kDemoRestTolDeg * kDegToRad;
+      if (fabsf(roll - rollRest_) < tol && fabsf(pitch - pitchRest_) < tol) {
+        levelOkT_ += dt;
+      } else {
+        levelOkT_ = 0.0f;
+      }
+      if (levelOkT_ >= params::kDemoLevelHoldS) {
+        phase_ = DemoPhase::LevelHold;
+        t_ = 0.0f;
+        return Event::Leveled;
+      }
+    }
+    return Event::None;
+  }
   switch (phase_) {
     case DemoPhase::Level: {
       if (t_ < levelT_) {

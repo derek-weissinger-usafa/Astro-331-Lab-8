@@ -101,7 +101,9 @@ disables a wheel automatically. Raw data: `test_runs/MAGCAL_2026-10-27_t1..t4_*.
 - [ ] 🔧 **Trim roll balance (DEMO_0002, `PROGRESS_LOG.md` §2.10):** weights fixed pitch (≈ −0.3°) and cut
       gravity's pull ~3×, but roll still rests ≈ 3.3° (−y / wheel D side heavy → move weight toward +y /
       wheel B; ≈ 15 mN·m, e.g. ~50 g by ~3 cm; check with a bubble level first).
-- [ ] 🧪 **`DEMO LEVEL`** after each trim: reports how long level was held before a wheel limit.
+- [ ] 🧪 **`DEMO LEVEL`** (now holds the natural rest tilt, roll/pitch damped only, heading held): measure
+      how long it holds before a wheel limit (expected minutes, limited by the ~0.12 mN·m yaw torque).
+      This is the closest test to requirement 1 (heading hold).
 - [ ] 💻 Optional: ramp the wheels down on a demo stop instead of braking (the brake kicks the table);
       `BALANCE` command; DEMO SPIN holding the natural tilt.
 - [ ] **Retune EKF noise** from the static test: gyro noise 1e-3 → ~3e-4 rad/s/√Hz; accel σ 0.036 → ~0.01

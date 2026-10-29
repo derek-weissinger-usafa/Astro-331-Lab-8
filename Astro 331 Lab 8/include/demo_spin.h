@@ -13,11 +13,15 @@
 //   SpinDown yaw rate -> 0 over kDemoRampS (also used by STOP / abort from SpinUp or Hold).
 //   Settle   hold the final heading for kDemoSettleS, then Complete.
 //
-// Level-only mode ("DEMO LEVEL"): the same Level slew, but no spin and no level timeout. The
-// reference stays level at the start heading until STOP / KILL / a safety or wheel limit. The
-// first time |roll|,|pitch| stay within tolerance for kDemoLevelHoldS it reports Leveled and
-// moves to LevelHold (same reference; it only marks that level was reached). No wheel bias in
-// this mode, so the full wheel speed range is available for holding level.
+// Level-only mode ("DEMO LEVEL"): hold the table's NATURAL REST TILT, not exact level. Heading is
+// held at its start value (full PD). For roll/pitch the reference tilt is set to the measured tilt
+// every step, so those axes are only DAMPED (Kd on rate): the table settles where gravity balances
+// it and the wheels stop absorbing roll/pitch torque. (Holding exact level filled a wheel in ~15 s,
+// DEMO_0003. Simulated: pure damping stores the least wheel momentum, ~Kd x tilt travel, and
+// settles fastest; a slowly-tracking reference stored up to 5x more.) The rest tilt is the tilt
+// low-passed over kDemoRestAvgS. Phase Level until |tilt - rest| < kDemoRestTolDeg for
+// kDemoLevelHoldS, then Leveled -> LevelHold. No spin, no timeout, no wheel bias; runs until
+// STOP / KILL / a safety or wheel limit.
 //
 // Conventions as frames.h: q is inertial->body; the reference rates are body rates expressed in
 // the REFERENCE body frame (the controller rotates them into the current body frame).
@@ -58,6 +62,9 @@ class DemoSpin {
   float elapsed() const { return elapsed_; }  // s since start()
   // Level-only: s since level was first reached (0 if not yet).
   float levelHoldTime() const { return phase_ == DemoPhase::LevelHold ? t_ : 0.0f; }
+  // Level-only: rest tilt (tilt low-passed over kDemoRestAvgS, rad).
+  float restRoll() const { return rollRest_; }
+  float restPitch() const { return pitchRest_; }
   // Null-mode wheel bias to hold (rad/s): kDemoWheelBiasRadS while running, ramped to 0 over
   // the Settle phase so the wheels aren't braked from speed at the end; 0 when off.
   float wheelBias() const;
@@ -65,6 +72,7 @@ class DemoSpin {
  private:
   void setLevelRef(float s, float sdot, float sddot);
   void setSpinRef();
+  void setRestRef();  // level-only: tilt (rollRef_, pitchRef_) at heading yaw_, zero rate
 
   DemoPhase phase_ = DemoPhase::Off;
   DemoRef ref_;
@@ -76,6 +84,8 @@ class DemoSpin {
   float downFrom_ = 0;   // rate at which SpinDown began
   float elapsed_ = 0;    // total time since start()
   bool levelOnly_ = false;
+  float rollRef_ = 0, pitchRef_ = 0;    // level-only tilt reference = measured tilt (rad)
+  float rollRest_ = 0, pitchRest_ = 0;  // level-only rest tilt estimate (rad)
   // Level slew: q_ref(s) = exp(s * phi) (x) qStart, s: 0 -> 1
   Quat qStart_{1, 0, 0, 0};
   Vec3 phi_{0, 0, 0};

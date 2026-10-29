@@ -151,6 +151,11 @@ constexpr float kDemoLevelRateRadS = 0.1f;     // max reference tilt rate while 
 constexpr float kDemoLevelMinS = 2.0f;         // shortest levelling slew
 constexpr float kDemoLevelTolDeg = 1.0f;       // "level" = |roll|,|pitch| below this ...
 constexpr float kDemoLevelHoldS = 3.0f;        // ... continuously for this long
+// DEMO LEVEL holds the table's natural rest tilt (where gravity balances it), not exact level
+// (DEMO_0003: holding exact level cost 1.3-3.3 mN m and filled a wheel in ~15 s). Roll/pitch are
+// only damped; the rest tilt is reported as a low-pass of the measured tilt with this time constant.
+constexpr float kDemoRestAvgS = 2.0f;
+constexpr float kDemoRestTolDeg = 0.25f;       // "settled": |tilt - rest average| below this for kDemoLevelHoldS
 constexpr float kDemoLevelTimeoutS = 20.0f;    // after the slew; then abort
 constexpr float kDemoRampS = 10.0f;            // spin-up and spin-down duration
 constexpr float kDemoHoldS = 10.0f;            // constant-rate hold

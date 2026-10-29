@@ -187,7 +187,7 @@ static float demoTargetRate() {
 static void reportLevelHold(const char* why) {
   char msg[112];
   const Vec3 e = ekf.eulerRad() * kRadToDeg;
-  snprintf(msg, sizeof(msg), "# %s: armed %.1f s, level held %.1f s, roll %.2f pitch %.2f deg\n", why,
+  snprintf(msg, sizeof(msg), "# %s: armed %.1f s, rest tilt held %.1f s, roll %.2f pitch %.2f deg\n", why,
            demo.elapsed(), demo.levelHoldTime(), e.x, e.y);
   sayAll(msg);
 }
@@ -223,7 +223,7 @@ static void startDemo(CommandLink& from, bool levelOnly) {
   state = State::Armed;
   char msg[128];
   if (levelOnly) {
-    snprintf(msg, sizeof(msg), "# DEMO LEVEL START: leveling, then holding level (STOP to end)%s%s\n",
+    snprintf(msg, sizeof(msg), "# DEMO LEVEL START: holding the natural rest tilt (STOP to end)%s%s\n",
              logger.sdActive() ? ", log " : "", logger.sdActive() ? logger.fileName() : "");
   } else {
     snprintf(msg, sizeof(msg), "# DEMO START: leveling, then spin CCW to %.2f rad/s (%.1f rpm)%s%s\n", rate,
@@ -624,9 +624,10 @@ static void controlStep(float dt) {
     const Vec3 e = ekf.eulerRad();
     switch (demo.step(dt, e.x, e.y)) {
       case DemoSpin::Event::Leveled: {
-        char msg[80];
+        char msg[112];
         if (demo.levelOnly()) {
-          snprintf(msg, sizeof(msg), "# DEMO LEVEL: level after %.1f s, holding\n", demo.elapsed());
+          snprintf(msg, sizeof(msg), "# DEMO LEVEL: settled after %.1f s at rest tilt roll %.2f pitch %.2f deg\n",
+                   demo.elapsed(), demo.restRoll() * kRadToDeg, demo.restPitch() * kRadToDeg);
         } else {
           snprintf(msg, sizeof(msg), "# DEMO LEVEL: spinning up to %.1f rpm\n",
                    demo.targetRate() * 60.0f / 6.2831853f);

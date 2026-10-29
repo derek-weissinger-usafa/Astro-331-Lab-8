@@ -150,6 +150,10 @@ What changed (`src/imu_bno085.cpp`, `src/main.cpp`, `src/data_logger.cpp`):
   steady-state error. A visibly larger deck tilt would be IMU mounting offset (to measure with a bubble level).
 - Yaw disturbance ≈ 0.12 mN·m → ≈ 6–7 min of heading hold if roll/pitch hold the table's natural rest tilt
   (now within ≈ 0.5° of level) instead of exact level. Figure: `Reports/figures/fig7_demo_level.png`.
+- **Firmware change (2026-10-27):** `DEMO LEVEL` now holds the natural rest tilt: heading held with the full PD,
+  roll/pitch only damped (reference tilt = measured tilt), so gravity sets the tilt and the wheels carry no
+  steady roll/pitch torque. Chosen over a slowly-tracking reference after a single-axis simulation: pure
+  damping stored ~8 mN·m·s for a 2° start vs ~42 mN·m·s with 4 s tracking. Not yet run on the table.
 
 ---
 
