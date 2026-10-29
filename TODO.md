@@ -15,6 +15,16 @@ Firmware (built and flashed): `mag_aid.h/.cpp` + `AttitudeEKF::updateMagYaw` (he
 estimates the z gyro bias). Commands: `MAG ON`/`MAG OFF` (on by default), `KICK <deg>` (test: offset the yaw
 estimate), `RAW ON/OFF` (100 Hz raw USB stream), `WHEEL <A-D> ON|OFF`. Encoder-fault detection now
 disables a wheel automatically. Raw data: `test_runs/MAGCAL_2026-10-27_t1..t4_*.txt`.
+- [ ] 🔧 **BLOCKER (2026-10-29): Teensy has no power / not detected.** After test 5 the board stopped
+      enumerating on USB (no COM port, no bootloader device, no Windows plug-in event; tried after re-plugging).
+      Team checks: 5 V present at the boost output, motor packs ≥ 12 V, wiring looks correct, but no LEDs anywhere,
+      and all three checks failed (5 V at the Teensy VIN pin itself, 3.3 V at the Teensy 3.3V pin, red bootloader
+      LED on pressing the program button). Next: with the logic switch on, measure VIN→GND **at the Teensy pin**
+      (if 0 V, the boost→VIN lead/connector is open); if VIN is 5 V but 3.3V is ~0 V, unplug the 3.3 V loads one at
+      a time (BNO085, XBee, the four encoder blue leads; wheel D's encoder first) to find a short; if VIN is 5 V and
+      nothing is shorted, the Teensy itself may be dead (check for a hot regulator; swap in a spare Teensy 4.1 and
+      re-flash). Also check the logic switch and the PKCELL voltage at the boost input under load.
+      Note: the VIN–VUSB trace is cut, so USB alone does not power the Teensy.
 - [ ] 🔧 **Wheel D encoder is broken** (one quadrature channel dead: counts stay ~0 while D spins at ~500 rpm,
       ±1 flicker and fake −165 rad/s spikes while still). Check D's yellow (pin 9) / white (pin 5) wires and the
       encoder board. Until fixed: `WHEEL D OFF` after every boot (the fault detector also trips it).

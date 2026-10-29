@@ -150,12 +150,26 @@ low pack C (battery check pending). **Only A and B were spinning**, so this vali
 - **Still to validate:** 3- and 4-wheel spinning (needs pack C checked and D's encoder repaired), and a
   ≥ 30 min drift run.
 
+### 1.7 Board power fault, 2026-10-29 (after test 5) — blocks all further testing
+
+Testing was paused after test 5 to check battery voltages. When reconnecting, the Teensy no longer appeared
+on USB at all: no COM port, no Teensy/bootloader USB device, and no plug-in event in the Windows PnP log
+after re-plugging. The team measured 5 V at the boost converter output and ≥ 12 V on all motor packs, and the
+wiring looked correct, but no LEDs were lit anywhere. All three follow-up checks failed: no 5 V at the
+Teensy's own VIN pin, no 3.3 V on the Teensy 3.3V pin, and no red LED when pressing the program button.
+So the Teensy is unpowered (or dead) even though the boost output is live. Likely causes, in the order to
+check: (1) an open lead/connector between the boost output and the Teensy VIN pin; (2) a short on the 3.3 V
+rail (BNO085, XBee, encoder Vcc leads; wheel D's encoder already has a dead channel) pulling the regulator
+down; (3) a damaged Teensy (swap in a spare and re-flash). Pack C still needs its cells checked individually
+(wheel C's breakaway duty was ~5× normal in test 5). Diagnosis steps are in `TODO.md` §0.
+
 ---
 
 ## 2. What still needs to be done
 
 In order. 🔧 = hands-on hardware, 💻 = firmware/analysis, 🧪 = table test.
 
+0. 🔧 **Restore power to the Teensy** (§1.7). Nothing below can run until the board enumerates on USB again.
 1. 🔧 **Repair wheel D's encoder.** Check the yellow (pin 9) and white (pin 5) wires at the Teensy and
    motor, the blue 3.3 V / green GND leads, and the encoder board. Verify by hand-turning 10 wheel turns
    with `ZERO` / `COUNTS` (expect ~4000). Until it's repaired, send `WHEEL D OFF` after every boot. The

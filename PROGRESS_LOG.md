@@ -166,8 +166,14 @@ What changed (`src/imu_bno085.cpp`, `src/main.cpp`, `src/data_logger.cpp`):
 - Result: wheels stopped, a 10° yaw error decays with τ ≈ 25 s; wheels spinning, not yet within ±1°
   (gating flicker, 1.4–2.9° error in mixed-direction combos).
 - **Wheel D's encoder has a dead channel** (D spun ~500 rpm reading 0). Repair before 4-wheel tests.
+- 2026-10-29: aid fixes (speed hysteresis, one reference per wheel-direction pattern, learning only while the
+  estimate is fresh). Test 5 (spinning, wheels A+B; C wouldn't start, D off): yaw within ±0.94° in un-kicked
+  combos, kicks recover while spinning (τ ≈ 25 s) with ~0.9° left after a kick. 3/4-wheel spinning untested.
+- **2026-10-29: Teensy lost power after test 5** — boost outputs 5 V but no 5 V at the Teensy VIN pin, no
+  3.3 V, no LEDs, not seen on USB. Blocks all testing; see report §1.7 and `TODO.md` §0.
 
 ## 3. Open issues (details and owners in `TODO.md`)
+- **Teensy unpowered / not detected (2026-10-29)** — top blocker, see `TODO.md` §0.
 - **Table balance / pendulum** (§2.7): blocks levelling and attitude hold in roll/pitch.
 - **Wheel A rub and low pack A; wheel C high duty and oscillation.**
 - **Real table mass and inertia** still unmeasured (fits suggest x/y 0.05–0.13, z ~0.08 kg·m²).
