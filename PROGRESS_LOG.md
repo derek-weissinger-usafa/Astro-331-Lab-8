@@ -176,8 +176,10 @@ What changed (`src/imu_bno085.cpp`, `src/main.cpp`, `src/data_logger.cpp`):
   motor-lead-to-encoder check read open). The spare was flashed (5ec01a5), its VIN–VUSB trace cut, and brought up
   in stages with 3.3 V and heat checks: IMU clean after reseating its wiring (1 reset, 0 lost samples), XBee OK,
   encoders A–C OK, `TEST x 0.3` A +45.0 / B +45.7 / C +37.5 rad/s (C ~17% slow).
-- **2026-10-30: wheel D's encoder fixed** — a wire was almost pulled out. `TEST D ±0.3` gives +44.9 / −46.8 rad/s
-  with clean counts, so all four wheels are back in service (needed for FAULT TEST).
+- **2026-10-30: wheel D's encoder** — a wire was almost pulled out. Reseated, `TEST D ±0.3` gives +44.9 / −46.8 rad/s,
+  but it failed again ~30 min later and needed a second reseat: the connection is **intermittent** and must be soldered
+  or crimped with strain relief. Wheel C's slow first start (37.5 rad/s) did not repeat: pack C 12.3 V, retests
+  46.2–46.5 rad/s, same breakaway (0.08–0.10 duty) as A and B. Full write-up: `Reports/Teensy_Recovery_2026-10-30.html`.
 
 ### 2.13 SLEW TEST, stretch requirement (2026-10-29, first draft)
 - New `SLEW TEST` command (`slew_test.h/.cpp`): four target attitudes, shortest-rotation (eigenaxis) slews on a
@@ -206,11 +208,11 @@ What changed (`src/imu_bno085.cpp`, `src/main.cpp`, `src/data_logger.cpp`):
   Deliverable: `Reports/Slew_and_Fault_Simulation.html`.
 
 ## 3. Open issues (details and owners in `TODO.md`)
-- **Wheel C runs ~17% slow** at 0.3 duty and needed > 0.4 duty to start (pack C / drag to check).
+- **Wheel D's encoder connection is intermittent** (reseated twice 2026-10-30): solder/crimp + strain relief.
 - **Table balance / pendulum** (§2.7): blocks levelling and attitude hold in roll/pitch.
 - **Wheel A rub and low pack A; wheel C high duty and oscillation.**
 - **Real table mass and inertia** still unmeasured (fits suggest x/y 0.05–0.13, z ~0.08 kg·m²).
-- **Wheel-failure test** (requirement 3): all four wheels work again; ready for a first table run once wheel C is checked.
+- **Wheel-failure test** (requirement 3): all four wheels run again; ready for a first table run once wheel D's connection is permanent.
 - BNO085 periodic 60–90 ms stalls (cause unknown, currently harmless).
 - EKF noise retune from the static logs; wheel static-friction compensation; rotor momentum in the wheel model.
 

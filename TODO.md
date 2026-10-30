@@ -28,12 +28,15 @@ disables a wheel automatically. Raw data: `test_runs/MAGCAL_2026-10-27_t1..t4_*.
       counts A −389 (1 turn), B −734 (2), C −1185 (3), clockwise = negative as expected, no swapped wires; D read
       0 (loose encoder wire, since fixed). `TEST x 0.3`: A +45.0, B +45.7, C +37.5 rad/s, so motor/encoder signs are right
       on the spare. IMU stayed clean with motors running. SD card moved to the spare (detected when a test opens
-      a log). Its VIN–VUSB trace is cut: uploads need logic power on. Wheel D: see below (fixed).
-- [x] 🔧 **Wheel D encoder — FIXED 2026-10-30: an encoder wire was almost pulled out.** Symptoms were one
-      quadrature channel dead (counts ~0 while D spun at ~500 rpm, ±1 flicker, fake −165 rad/s spikes while still).
-      After reseating: `TEST D 0.3` +44.9 rad/s (+2,445 counts), `TEST D -0.3` −46.8 rad/s (−2,606), no encoder-fault
-      trips, so both channels work and the signs are right. `WHEEL D OFF` is no longer needed. Secure that
-      connector (strain relief / hot glue) so it can't work loose again.
+      a log). Its VIN–VUSB trace is cut: uploads need logic power on. Wheel D: see below (intermittent).
+      Report: `Reports/Teensy_Recovery_2026-10-30.html`.
+- [ ] 🔧 **Wheel D encoder connection is INTERMITTENT (2026-10-30): make it permanent.** Cause of the old "one
+      channel dead" symptom (counts ~0 while D spun, ±1 flicker, fake −165 rad/s spikes): an encoder wire almost pulled
+      out. Reseated → `TEST D ±0.3` +44.9 / −46.8 rad/s (+2,445 / −2,606 counts). About 30 min later it failed again
+      (no counts at 0.2–0.25 duty; the encoder-fault check disabled D). Reseated again → +44.2 / −45.3 rad/s,
+      breakaway 0.10 duty like the others. **Solder or crimp the joint and add strain relief**, then wiggle-test it while
+      polling `COUNTS`. If it drops out mid-run the firmware disables D, which would look like an uninjected wheel
+      failure in FAULT TEST. D is in service (`WHEEL D OFF` not needed) while it works.
 - [x] Findings: a stopped wheel's field depends on where its shaft stopped (1–5 µT ≈ 3–13°); a spinning wheel's
       mean field is repeatable and nearly speed-independent, but **reversing a wheel shifts it 0.6–1.6 µT**
       (modelled: `kDirStep`, `kSpeedSlope`, residual ≤ 0.8° per wheel alone). Horizontal field ≈ 21.5 µT
@@ -48,10 +51,11 @@ disables a wheel automatically. Raw data: `test_runs/MAGCAL_2026-10-27_t1..t4_*.
 - [x] 💻 Manual `SPEED x 0` holding current: a stopped wheel at target 0 is now released (no drive, PI reset).
 - [x] 🧪 Test 5 (2026-10-29, A+B only): spinning yaw within ±0.94° without kicks, kicks recover with
       τ ≈ 25 s. Report §1.6.
-- [ ] 🔧 **Wheel C needed > 0.4 duty to start** in test 5 (fault detector disabled it), and on 2026-10-30
-      `TEST C 0.3` reached only 37.5 rad/s vs 45–46 for A and B (~17% slow). Check pack C voltage under load
-      (and all packs: 12.4–12.6 V, cells within 0.05 V) and spin C by hand (motor switch off) for drag before
-      more motor tests; a sticky C may also trip the new dead-motor detector (FAULT TEST).
+- [x] 🔧 **Wheel C slow / sticky start — resolved 2026-10-30.** It needed > 0.4 duty to start in test 5 and its first
+      `TEST C 0.3` reached only 37.5 rad/s (A, B 45–46). Pack C reads 12.3 V like the others; retests gave +46.2 / −46.5 /
+      +46.3 rad/s (A +46.0) and breakaway from rest at 0.08–0.10 duty, the same as A and B. Most likely sticky after
+      sitting (grease / light rub). If a first start is slow again it may trip the dead-motor detector; give the wheels
+      a short spin (`TEST x 0.3`) before a FAULT TEST run.
 - [ ] 🧪 Then: repeat test 5 with A, B, C (and D once repaired) (kick recovery stopped + spinning, 8 direction combos), then a ≥ 30 min drift
       run. Table hard-iron (rotates with the body) is not modelled; matters only for big yaw slews.
 
