@@ -15,16 +15,20 @@ Firmware (built and flashed): `mag_aid.h/.cpp` + `AttitudeEKF::updateMagYaw` (he
 estimates the z gyro bias). Commands: `MAG ON`/`MAG OFF` (on by default), `KICK <deg>` (test: offset the yaw
 estimate), `RAW ON/OFF` (100 Hz raw USB stream), `WHEEL <A-D> ON|OFF`. Encoder-fault detection now
 disables a wheel automatically. Raw data: `test_runs/MAGCAL_2026-10-27_t1..t4_*.txt`.
-- [ ] 🔧 **BLOCKER (2026-10-29): Teensy has no power / not detected.** After test 5 the board stopped
-      enumerating on USB (no COM port, no bootloader device, no Windows plug-in event; tried after re-plugging).
-      Team checks: 5 V present at the boost output, motor packs ≥ 12 V, wiring looks correct, but no LEDs anywhere,
-      and all three checks failed (5 V at the Teensy VIN pin itself, 3.3 V at the Teensy 3.3V pin, red bootloader
-      LED on pressing the program button). Next: with the logic switch on, measure VIN→GND **at the Teensy pin**
-      (if 0 V, the boost→VIN lead/connector is open); if VIN is 5 V but 3.3V is ~0 V, unplug the 3.3 V loads one at
-      a time (BNO085, XBee, the four encoder blue leads; wheel D's encoder first) to find a short; if VIN is 5 V and
-      nothing is shorted, the Teensy itself may be dead (check for a hot regulator; swap in a spare Teensy 4.1 and
-      re-flash). Also check the logic switch and the PKCELL voltage at the boost input under load.
-      Note: the VIN–VUSB trace is cut, so USB alone does not power the Teensy.
+- [x] 🔧 **Teensy power fault — RESOLVED 2026-10-30 (spare Teensy fitted).** After test 5 (2026-10-29) the
+      Teensy stopped enumerating. Diagnosis: 5 V at its VIN pin but 0 V on 3.3V; 3.3V–GND shorted (0.8 Ω on the
+      bare board, which ran very hot when powered) with every 3.3 V load removed, so the board itself failed.
+      **The old Teensy is dead — do not power it again.** Cause not found: all four drivers' VIN–VCC and VM–VCC
+      read open, and on every motor the red/black leads to encoder blue/yellow/white read open (12 V bridging onto
+      an encoder was the top suspect; wheel D's encoder failed around the same time). Watch for a repeat.
+      Spare Teensy 4.1 brought up in stages (flashed 5ec01a5 → VIN–VUSB trace cut → VIN/GND only, 3.3 V OK →
+      BNO085 + XBee → encoders → motors), checking 3.3 V and heat at each step; it stays cool.
+      Results: XBee link OK; after reseating the IMU wiring, `rst=1`, `miss=0`, `maxgap=13` ms through
+      calibration (a loose STEMMA/RST connection first gave 7 chip resets and ~1,100 lost samples). Hand-turn
+      counts A −389 (1 turn), B −734 (2), C −1185 (3), clockwise = negative as expected, no swapped wires; D read
+      0 (encoder still broken). `TEST x 0.3`: A +45.0, B +45.7, C +37.5 rad/s, so motor/encoder signs are right
+      on the spare. IMU stayed clean with motors running. SD card moved to the spare (detected when a test opens
+      a log). Its VIN–VUSB trace is cut: uploads need logic power on.
 - [ ] 🔧 **Wheel D encoder is broken** (one quadrature channel dead: counts stay ~0 while D spins at ~500 rpm,
       ±1 flicker and fake −165 rad/s spikes while still). Check D's yellow (pin 9) / white (pin 5) wires and the
       encoder board. Until fixed: `WHEEL D OFF` after every boot (the fault detector also trips it).
@@ -42,8 +46,10 @@ disables a wheel automatically. Raw data: `test_runs/MAGCAL_2026-10-27_t1..t4_*.
 - [x] 💻 Manual `SPEED x 0` holding current: a stopped wheel at target 0 is now released (no drive, PI reset).
 - [x] 🧪 Test 5 (2026-10-29, A+B only): spinning yaw within ±0.94° without kicks, kicks recover with
       τ ≈ 25 s. Report §1.6.
-- [ ] 🔧 **Wheel C needed > 0.4 duty to start** in test 5 (fault detector disabled it). Check pack C voltage
-      (and all packs: 12.4–12.6 V, cells within 0.05 V) before more motor tests.
+- [ ] 🔧 **Wheel C needed > 0.4 duty to start** in test 5 (fault detector disabled it), and on 2026-10-30
+      `TEST C 0.3` reached only 37.5 rad/s vs 45–46 for A and B (~17% slow). Check pack C voltage under load
+      (and all packs: 12.4–12.6 V, cells within 0.05 V) and spin C by hand (motor switch off) for drag before
+      more motor tests; a sticky C may also trip the new dead-motor detector (FAULT TEST).
 - [ ] 🧪 Then: repeat test 5 with A, B, C (and D once repaired) (kick recovery stopped + spinning, 8 direction combos), then a ≥ 30 min drift
       run. Table hard-iron (rotates with the body) is not modelled; matters only for big yaw slews.
 

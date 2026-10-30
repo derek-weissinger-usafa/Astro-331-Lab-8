@@ -171,6 +171,11 @@ What changed (`src/imu_bno085.cpp`, `src/main.cpp`, `src/data_logger.cpp`):
   combos, kicks recover while spinning (τ ≈ 25 s) with ~0.9° left after a kick. 3/4-wheel spinning untested.
 - **2026-10-29: Teensy lost power after test 5** — boost outputs 5 V but no 5 V at the Teensy VIN pin, no
   3.3 V, no LEDs, not seen on USB. Blocks all testing; see report §1.7 and `TODO.md` §0.
+- **2026-10-30: resolved with the spare Teensy.** The old board's 3.3 V rail was shorted on the board itself
+  (0.8 Ω bare, very hot when powered): it is dead. No wiring cause found (driver VIN–VCC / VM–VCC and every
+  motor-lead-to-encoder check read open). The spare was flashed (5ec01a5), its VIN–VUSB trace cut, and brought up
+  in stages with 3.3 V and heat checks: IMU clean after reseating its wiring (1 reset, 0 lost samples), XBee OK,
+  encoders A–C OK, `TEST x 0.3` A +45.0 / B +45.7 / C +37.5 rad/s (C ~17% slow). Wheel D stays off (encoder).
 
 ### 2.13 SLEW TEST, stretch requirement (2026-10-29, first draft)
 - New `SLEW TEST` command (`slew_test.h/.cpp`): four target attitudes, shortest-rotation (eigenaxis) slews on a
@@ -199,7 +204,7 @@ What changed (`src/imu_bno085.cpp`, `src/main.cpp`, `src/data_logger.cpp`):
   Deliverable: `Reports/Slew_and_Fault_Simulation.html`.
 
 ## 3. Open issues (details and owners in `TODO.md`)
-- **Teensy unpowered / not detected (2026-10-29)** — top blocker, see `TODO.md` §0.
+- **Wheel C runs ~17% slow** at 0.3 duty and needed > 0.4 duty to start (pack C / drag to check).
 - **Table balance / pendulum** (§2.7): blocks levelling and attitude hold in roll/pitch.
 - **Wheel A rub and low pack A; wheel C high duty and oscillation.**
 - **Real table mass and inertia** still unmeasured (fits suggest x/y 0.05–0.13, z ~0.08 kg·m²).
