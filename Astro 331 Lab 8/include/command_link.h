@@ -34,10 +34,24 @@
 //                  never driven; control allocates over the rest. Encoder faults disable it too.
 //   MAG ON | MAG OFF  magnetometer heading aid on (default) / off (gyro-only yaw), mag_aid.h
 //   KICK <deg>     test: rotate the yaw ESTIMATE by deg (the aid should pull it back)
+//   SLEW TEST      stretch requirement: slew to 4 attitudes (shortest rotation, smooth profile), reach
+//                  each within +/-1 deg in roll/pitch/yaw and hold 5 s; reports PASS/FAIL per target.
+//                  From Idle, wheels stopped; logs SLEW_####.CSV. After target 4 it keeps holding it
+//                  until STOP (or KILL). Tilt kept under 25 deg while it runs.
+//   SLEW SET <1-4> <roll> <pitch> <yaw>  change a target (deg; yaw relative to the start heading;
+//                  tilt <= kSlewMaxTiltDeg). Idle only.  SLEW LIST  print the targets.
+//   FAULT TEST <A-D> [s]  requirement 3: after s seconds Armed (default kFaultDelayS = 10) wheel X's
+//                  motor goes dead without telling the controller (WheelMotor::setSimulatedDead);
+//                  whatever is running carries on. Grades detection and recovery (wheel_fault.h).
+//                  Send it from Idle (then start ARM / DEMO LEVEL / SLEW TEST) or while Armed. The
+//                  wheels idle at +/-100 rpm in the null mode while it runs.
+//   FAULT TEST REAL  same grading, nothing injected: remove power from one wheel yourself.
+//   FAULT CLEAR    Idle only: end the test, undo the simulated failure and put wheels the
+//                  dead-motor detector took out back in service.
 //   RAW ON | RAW OFF  USB only in practice: stream one raw row per magnetometer sample (~100 Hz)
 //                  instead of the 20 Hz estimator CSV (magnetometer calibration data, see main.cpp)
 enum class Cmd : uint8_t { None, Arm, Disarm, Kill, Status, Ping, Test, Speed, Counts, Zero,
-                           BeginStatic, DemoSpin, DemoLevel, Stop, Calibrate, MagMap, RawOn, RawOff, Wheel, MagAidOn, MagAidOff, Kick, Unknown };
+                           BeginStatic, DemoSpin, DemoLevel, Stop, Calibrate, MagMap, RawOn, RawOff, Wheel, MagAidOn, MagAidOff, Kick, SlewTest, SlewSet, SlewList, FaultTest, FaultClear, Unknown };
 
 struct Command {
   static constexpr int kAllWheels = 4;
@@ -45,6 +59,8 @@ struct Command {
   int wheel = -1;    // Test/Speed: 0..3 for A..D; Speed also accepts kAllWheels
   float value = 0;   // Wheel: 1 on / 0 off. Test: duty. Speed: rpm. BeginStatic: wheel rpm (if hasValue)
   bool hasValue = false;  // BeginStatic: an rpm was given
+  float v[3] = {0, 0, 0};  // SlewSet: roll, pitch, yaw (deg); wheel = target index 0..3
+  // FaultTest: wheel 0..3 (-1 = REAL), value = delay (s) if hasValue
 };
 
 class CommandLink {

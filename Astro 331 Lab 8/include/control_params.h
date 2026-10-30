@@ -171,4 +171,60 @@ constexpr float kDemoWheelBiasRadS = 10.47f;   // 100 rpm
 constexpr float kDemoStartMaxWheelRadS = 2.0f; // wheels must be ~stopped to start
 constexpr float kDemoWheelAbortRadS = 55.0f;   // any wheel above this => spin down early
 
+// ---- SLEW TEST (stretch requirement; slew_test.h) ----
+// Four attitudes: roll, pitch (deg from level) and yaw (deg, relative to the heading at start).
+// Tilt must stay <= kSlewMaxTiltDeg: the bubble has no top, so the team keeps the table under
+// 25 deg; during SLEW TEST the supervisor also disarms above 25 deg (instead of kMaxTiltDeg). Change at run time with SLEW SET <1-4> <roll> <pitch> <yaw>.
+// NOTE: on a pendulous table every degree of tilt away from the rest tilt costs a steady
+// gravity torque (~5 mN m/deg after the 2026-10-21 balancing) that the wheels can't hold for
+// long; see PROGRESS_LOG.md. Tilted targets need the CG very close to the bearing centre.
+constexpr int kSlewNumTargets = 4;
+constexpr float kSlewTargets[kSlewNumTargets][3] = {
+    {10.0f, 0.0f, 45.0f},    // roll right, quarter turn left of start
+    {0.0f, -10.0f, 135.0f},  // nose down
+    {-8.0f, 8.0f, -135.0f},  // roll left + nose up (shortest path crosses 180)
+    {0.0f, 0.0f, 0.0f},      // back to level at the start heading
+};
+constexpr float kSlewMaxTiltDeg = 25.0f;
+constexpr float kSlewMaxRateRadS = 0.1f;     // peak reference rate along the slew (~5.7 deg/s)
+constexpr float kSlewMaxAccelRadS2 = 0.02f;  // peak reference acceleration
+constexpr float kSlewMinS = 3.0f;            // shortest slew
+constexpr float kSlewTolDeg = 1.0f;          // requirement: +/-1 deg in roll, pitch and yaw
+constexpr float kSlewSettleS = 1.0f;         // within tolerance this long = "reached"
+constexpr float kSlewSettleTimeoutS = 20.0f; // give up waiting and hold anyway (marked not settled)
+constexpr float kSlewHoldS = 5.0f;           // requirement: hold each attitude 5 s
+
+// ---- Wheel failure: dead-motor detection + FAULT TEST (requirement 3; wheel_fault.h) ----
+// Drive effort e = duty - speed/kWheelFreeSpeedRadS (~ motor current / stall current). A working
+// motor accelerates its wheel at ~kMotorAccelPerEffort * e less friction: stall torque (~0.24-0.29
+// N m for the 6.3:1 37D at 12 V, TODO: verify) over the wheel J, de-rated ~15% for the motor rotor
+// (rotor momentum TODO). Each kDeadBlockS block: mean |e| >= kDeadEffort and less than
+// kDeadResponseFrac of the predicted speed gain in the effort direction = unresponsive;
+// kDeadDetectS of unresponsive blocks in a row = dead motor (disabled, then coasts).
+// Margins (sim_fault.py): a healthy wheel at e = 0.2 gains >= ~120 rad/s^2; the 0.25 x 800 x 0.2
+// = 40 rad/s^2 threshold sits above friction-only deceleration (~20-30 rad/s^2, rubbing wheel).
+// Simulated detection: 0.6-0.8 s after the failure; no false trips in healthy runs.
+constexpr float kMotorAccelPerEffort = 800.0f;  // rad/s^2 per unit effort
+constexpr float kDeadEffort = 0.2f;
+constexpr float kDeadResponseFrac = 0.25f;
+constexpr float kDeadBlockS = 0.1f;
+constexpr float kDeadDetectS = 0.2f;
+// FAULT TEST <A-D> [delay]: after the delay (counted while Armed), as soon as wheel X turns at
+// >= kFaultMinWheelRadS (an idle, unneeded wheel can't show a failure), its motor is made dead
+// without telling the controller; whatever is running carries on. Graded: detected within
+// kFaultDetectMaxS on the right wheel; attitude error back within +/-kFaultTolDeg (all axes,
+// continuously kFaultSettleS) within kFaultRecoverMaxS of the failure; then held within
+// +/-kFaultTolDeg for kFaultHoldS.
+// While the test runs the 4-wheel null mode holds A,C at +100 rpm and B,D at -100 rpm (no net
+// torque or momentum, as in DEMO SPIN): a stopped motor that is never asked for torque looks the
+// same dead or alive, so the wheels are kept turning to make a dead one show up at once.
+constexpr float kFaultDelayS = 10.0f;
+constexpr float kFaultTolDeg = 1.0f;
+constexpr float kFaultSettleS = 1.0f;
+constexpr float kFaultDetectMaxS = 1.0f;
+constexpr float kFaultRecoverMaxS = 10.0f;
+constexpr float kFaultHoldS = 30.0f;
+constexpr float kFaultWheelBiasRadS = 10.47f;  // 100 rpm
+constexpr float kFaultMinWheelRadS = 3.0f;
+
 }  // namespace params

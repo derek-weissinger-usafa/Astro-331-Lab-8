@@ -41,6 +41,48 @@ static Command parseLine(char* line) {
             : (a && !strcmp(a, "ON"))  ? Cmd::MagAidOn
             : (a && !strcmp(a, "OFF")) ? Cmd::MagAidOff
                                        : Cmd::Unknown;
+  } else if (!strcmp(tok, "SLEW")) {
+    char* a = strtok_r(nullptr, " \t,", &save);
+    if (a && !strcmp(a, "TEST")) {
+      c.cmd = Cmd::SlewTest;
+    } else if (a && !strcmp(a, "LIST")) {
+      c.cmd = Cmd::SlewList;
+    } else if (a && !strcmp(a, "SET")) {
+      char* n = strtok_r(nullptr, " \t,", &save);
+      char* r = strtok_r(nullptr, " \t,", &save);
+      char* p = strtok_r(nullptr, " \t,", &save);
+      char* y = strtok_r(nullptr, " \t,", &save);
+      if (n && r && p && y) {
+        c.cmd = Cmd::SlewSet;
+        c.wheel = atoi(n) - 1;
+        c.v[0] = (float)atof(r);
+        c.v[1] = (float)atof(p);
+        c.v[2] = (float)atof(y);
+      } else {
+        c.cmd = Cmd::Unknown;
+      }
+    } else {
+      c.cmd = Cmd::Unknown;
+    }
+  } else if (!strcmp(tok, "FAULT")) {
+    char* a = strtok_r(nullptr, " \t,", &save);
+    char* w = strtok_r(nullptr, " \t,", &save);
+    char* d = strtok_r(nullptr, " \t,", &save);
+    if (a && !strcmp(a, "CLEAR")) {
+      c.cmd = Cmd::FaultClear;
+    } else if (a && !strcmp(a, "TEST") && w && !strcmp(w, "REAL")) {
+      c.cmd = Cmd::FaultTest;
+      c.wheel = -1;
+    } else if (a && !strcmp(a, "TEST") && w && w[0] >= 'A' && w[0] <= 'D' && w[1] == '\0') {
+      c.cmd = Cmd::FaultTest;
+      c.wheel = w[0] - 'A';
+      if (d) {
+        c.value = (float)atof(d);
+        c.hasValue = true;
+      }
+    } else {
+      c.cmd = Cmd::Unknown;
+    }
   } else if (!strcmp(tok, "KICK")) {
     char* v = strtok_r(nullptr, " \t,", &save);
     c.cmd = v ? Cmd::Kick : Cmd::Unknown;

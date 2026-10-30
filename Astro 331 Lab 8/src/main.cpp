@@ -6,11 +6,13 @@
 #include "control_params.h"
 #include "data_logger.h"
 #include "demo_spin.h"
+#include "slew_test.h"
 #include "frames.h"
 #include "imu_bno085.h"
 #include "mag_aid.h"
 #include "mag_map.h"
 #include "pins.h"
+#include "wheel_fault.h"
 #include "wheel_geometry.h"
 #include "wheel_motor.h"
 #include "wheel_speed_ctrl.h"
@@ -32,6 +34,7 @@ static CommandLink xbee(XBEE_SERIAL);
 static CommandLink usb(Serial);
 static DataLogger logger(XBEE_SERIAL);
 static DemoSpin demo;
+static SlewTest slew;
 static MagAid magAid;  // magnetometer heading aid (mag_aid.h)
 static uint32_t lastMagUs = 0;
 static bool haveLastMag = false;
@@ -59,6 +62,11 @@ static bool wheelEnabled[kN] = {true, true, true, true};  // fault-handling hook
 // -165 rad/s while still, which disarmed and even drove D through its own speed loop.
 static float encFaultS[kN] = {0, 0, 0, 0};
 static float prevSpeed[kN] = {0, 0, 0, 0};
+// Dead-motor detection (requirement 3, wheel_fault.h): a wheel driven hard that doesn't accelerate
+// is disabled and then coasts (wheelDead). FAULT TEST injects such a failure and grades recovery.
+static DeadMotorDetector deadDet[kN];
+static bool wheelDead[kN] = {false, false, false, false};
+static FaultTest fault;
 static float wheelCmd[kN] = {0, 0, 0, 0};                 // wheel speed setpoints, rad/s
 static float manualTarget[kN] = {0, 0, 0, 0};             // SPEED targets; wheelCmd ramps to these
 static float manualSpeed[kN] = {0, 0, 0, 0};              // low-passed wheel speed, rad/s (Manual)
@@ -130,10 +138,118 @@ static void disarm(const char* reason) {
   stopAllWheels();
   testWheel = -1;
   demo.abort();
+  slew.abort();
   magStep = -1;
   if (state == State::Armed || state == State::Manual) state = State::Idle;
   char msg[48];
   snprintf(msg, sizeof(msg), "# DISARM %s\n", reason);
+  sayAll(msg);
+  if (fault.active()) {
+    fault.abort();
+    sayAll("# FAULT TEST ABORTED (disarmed)\n");
+  }
+}
+
+// ---- Wheel failure (requirement 3) ----
+static char wheelChar(int i) { return i < 0 ? '?' : (char)('A' + i); }
+
+// 4-char wheel status for STATUS and the log: '.' in service, 'x' in service but its motor is
+// failed by FAULT TEST (not detected yet), 'D' dead motor detected (out of service, coasting),
+// '-' out of service (WHEEL x OFF or encoder fault).
+static void wheelStatus(char out[kN + 1]) {
+  for (int i = 0; i < kN; i++)
+    out[i] = wheelEnabled[i] ? (wheels[i].simulatedDead() ? 'x' : '.') : (wheelDead[i] ? 'D' : '-');
+  out[kN] = '\0';
+}
+
+static void reportFault(FaultTest::Event ev) {
+  char msg[200];
+  const Vec3 pk = fault.peakErrDeg(), hm = fault.holdMaxDeg();
+  switch (ev) {
+    case FaultTest::Event::Inject:
+      wheels[fault.wheel()].setSimulatedDead(true);
+      snprintf(msg, sizeof(msg), "# FAULT TEST: wheel %c motor now DEAD (simulated; controller not told)\n",
+               wheelChar(fault.wheel()));
+      break;
+    case FaultTest::Event::Recovered:
+      snprintf(msg, sizeof(msg),
+               "# FAULT TEST: back within +/-%.1f deg %.1f s after the %s, peak err %.2f %.2f %.2f deg; holding %.0f s\n",
+               params::kFaultTolDeg, fault.recoverS(), fault.real() ? "detection" : "failure", pk.x, pk.y, pk.z,
+               params::kFaultHoldS);
+      break;
+    case FaultTest::Event::Pass:
+    case FaultTest::Event::Fail: {
+      char det[24] = "n/a (REAL)";
+      if (!fault.real()) snprintf(det, sizeof(det), "%.2f s", fault.detectS());
+      snprintf(msg, sizeof(msg),
+               "# FAULT TEST %s%s%s: wheel %c, detected %s, recovered %.1f s, peak err %.2f %.2f %.2f, hold max "
+               "%.2f %.2f %.2f deg\n",
+               fault.pass() ? "PASS" : "FAIL", fault.pass() ? "" : " - ", fault.failReason(),
+               wheelChar(fault.wheel()), det, fault.recoverS(), pk.x, pk.y, pk.z, hm.x, hm.y, hm.z);
+      break;
+    }
+    default:
+      return;
+  }
+  sayAll(msg);
+}
+
+// A detector took wheel i out of service: tell the fault test.
+static void onWheelFailed(int i) {
+  const FaultTest::Event ev = fault.onFailure(i);
+  if (ev != FaultTest::Event::None) reportFault(ev);
+}
+
+static void startFaultTest(const Command& c, CommandLink& from) {
+  if (state != State::Idle && state != State::Armed) {
+    from.send("# FAULT TEST REFUSED: Idle or Armed only\n");
+    return;
+  }
+  if (fault.active()) {
+    from.send("# FAULT TEST REFUSED: already running\n");
+    return;
+  }
+  if (c.wheel >= 0 && (!wheelEnabled[c.wheel] || wheels[c.wheel].simulatedDead())) {
+    from.send("# FAULT TEST REFUSED: that wheel is already out of service\n");
+    return;
+  }
+  int n = 0;
+  for (int i = 0; i < kN; i++) n += wheelEnabled[i] ? 1 : 0;
+  const float delay = c.hasValue ? c.value : params::kFaultDelayS;
+  fault.start(c.wheel, delay);
+  if (n < kN) {
+    fault.setWheelBias(0.0f);  // the null mode needs all four wheels
+    sayAll("# FAULT TEST WARNING: not all 4 wheels in service - no wheel bias; one more failure may leave too few\n");
+  }
+  char msg[128];
+  if (fault.real()) {
+    snprintf(msg, sizeof(msg), "# FAULT TEST REAL: watching for a dead motor - remove power from one wheel%s\n",
+             state == State::Armed ? " now" : " once Armed");
+  } else {
+    snprintf(msg, sizeof(msg), "# FAULT TEST: wheel %c motor fails after %.0f s Armed%s\n", 'A' + c.wheel, delay,
+             state == State::Armed ? "" : " (now start ARM / DEMO LEVEL / SLEW TEST)");
+  }
+  sayAll(msg);
+}
+
+static void clearFaults(CommandLink& from) {
+  if (state != State::Idle) {
+    from.send("# FAULT CLEAR REFUSED: not idle\n");
+    return;
+  }
+  fault.abort();
+  for (int i = 0; i < kN; i++) {
+    wheels[i].setSimulatedDead(false);
+    if (wheelDead[i]) wheelEnabled[i] = true;
+    wheelDead[i] = false;
+    deadDet[i].reset();
+    encFaultS[i] = 0.0f;
+    prevSpeed[i] = wheels[i].speed();
+  }
+  char ws[kN + 1];
+  wheelStatus(ws);
+  char msg[64];
+  snprintf(msg, sizeof(msg), "# FAULT CLEAR: wheels %s\n", ws);
   sayAll(msg);
 }
 
@@ -231,6 +347,113 @@ static void startDemo(CommandLink& from, bool levelOnly) {
              logger.sdActive() ? logger.fileName() : "");
   }
   sayAll(msg);
+}
+
+// ---- SLEW TEST (stretch requirement) ----
+static void sayTarget(const char* head, int i) {
+  const SlewTest::Target& g = slew.target(i);
+  char msg[112];
+  snprintf(msg, sizeof(msg), "# %s %d: roll %.1f pitch %.1f yaw %+.1f deg (yaw rel. to start)\n", head, i + 1,
+           g.rollDeg, g.pitchDeg, g.yawDeg);
+  sayAll(msg);
+}
+
+static void reportSlewResult(int i) {
+  const SlewTest::Result& r = slew.result(i);
+  char msg[128];
+  snprintf(msg, sizeof(msg), "# SLEW %d/%d %s: %s, max err roll %.2f pitch %.2f yaw %.2f deg over %.0f s\n", i + 1,
+           params::kSlewNumTargets, r.pass ? "PASS" : "FAIL", r.settled ? "settled" : "NOT settled",
+           r.maxErrDeg.x, r.maxErrDeg.y, r.maxErrDeg.z, params::kSlewHoldS);
+  sayAll(msg);
+}
+
+static void sayNextSlew() {
+  char msg[112];
+  snprintf(msg, sizeof(msg), "# SLEW %d/%d: %.1f deg in %.1f s\n", slew.index() + 1, params::kSlewNumTargets,
+           slew.slewAngleDeg(), slew.slewDuration());
+  sayAll(msg);
+}
+
+static void startSlew(CommandLink& from) {
+  if (state != State::Idle || demo.active()) {
+    from.send("# SLEW REFUSED: not idle (wait for calibration / DISARM first)\n");
+    return;
+  }
+  const Vec3 e = ekf.eulerRad();
+  const float lim = params::kMaxTiltDeg * kDegToRad;
+  if (fabsf(e.x) > lim || fabsf(e.y) > lim) {
+    from.send("# SLEW REFUSED: tilt over 30 deg\n");
+    return;
+  }
+  for (int i = 0; i < kN; i++) {
+    if (fabsf(wheels[i].speed()) > params::kDemoStartMaxWheelRadS) {
+      from.send("# SLEW REFUSED: wheels still turning\n");
+      return;
+    }
+  }
+  if (!logger.sdActive()) logger.startFile("SLEW");
+  ctrl.reset();
+  slew.start(ekf.quaternion());
+  ctrl.setTrajectory(slew.refQ(), slew.refW(), slew.refA());
+  for (int i = 0; i < kN; i++) {
+    speedLoops[i].reset();
+    wheelCmd[i] = wheels[i].speed();
+  }
+  state = State::Armed;
+  char msg[96];
+  snprintf(msg, sizeof(msg), "# SLEW TEST START: %d targets, +/-%.1f deg, hold %.0f s%s%s\n", params::kSlewNumTargets,
+           params::kSlewTolDeg, params::kSlewHoldS, logger.sdActive() ? ", log " : "",
+           logger.sdActive() ? logger.fileName() : "");
+  sayAll(msg);
+  for (int i = 0; i < params::kSlewNumTargets; i++) sayTarget("SLEW target", i);
+  sayNextSlew();
+}
+
+// Called every control step while the slew test runs. Returns false if it disarmed.
+static bool stepSlew(float dt) {
+  switch (slew.step(dt, ekf.quaternion())) {
+    case SlewTest::Event::Settled: {
+      char msg[80];
+      snprintf(msg, sizeof(msg), "# SLEW %d/%d reached (+/-%.1f deg) %.1f s after the slew, holding\n",
+               slew.index() + 1, params::kSlewNumTargets, params::kSlewTolDeg, slew.result(slew.index()).settleS);
+      sayAll(msg);
+      break;
+    }
+    case SlewTest::Event::SettleTimeout: {
+      const Vec3 e = slew.errorDeg();
+      char msg[112];
+      snprintf(msg, sizeof(msg), "# SLEW %d/%d NOT reached in %.0f s (err %.2f %.2f %.2f deg), holding anyway\n",
+               slew.index() + 1, params::kSlewNumTargets, params::kSlewSettleTimeoutS, e.x, e.y, e.z);
+      sayAll(msg);
+      break;
+    }
+    case SlewTest::Event::TargetDone:
+      reportSlewResult(slew.index() - 1);
+      sayNextSlew();
+      break;
+    case SlewTest::Event::Complete: {
+      reportSlewResult(params::kSlewNumTargets - 1);
+      char msg[96];
+      snprintf(msg, sizeof(msg), "# SLEW TEST COMPLETE: %d/%d PASS, holding target %d until STOP\n",
+               slew.passCount(), params::kSlewNumTargets, params::kSlewNumTargets);
+      sayAll(msg);
+      break;
+    }
+    default:
+      break;
+  }
+  float wmax = 0.0f;
+  for (int i = 0; i < kN; i++) wmax = fmaxf(wmax, fabsf(wheels[i].speed()));
+  if (wmax > params::kDemoWheelAbortRadS) {
+    char msg[96];
+    snprintf(msg, sizeof(msg), "# SLEW %d/%d: wheel at %.0f rad/s (limit), stopping after %.1f s\n",
+             slew.index() + 1, params::kSlewNumTargets, wmax, slew.elapsed());
+    sayAll(msg);
+    disarm("SLEW_WHEEL_LIMIT");
+    return false;
+  }
+  ctrl.setTrajectory(slew.refQ(), slew.refW(), slew.refA());
+  return true;
 }
 
 static void stopDemo(CommandLink& from) {
@@ -361,6 +584,15 @@ static void logData(uint32_t sampleUs) {
     r.rateRef = demo.rateRef();
     r.yawRefDeg = demo.yawRef() * kRadToDeg;
   }
+  wheelStatus(r.wheelStatus);
+  if (state == State::Armed) r.errDeg = ctrl.angleError() * kRadToDeg;
+  r.faultPhase = fault.phaseChar();
+  if (slew.active()) {  // SLEW TEST: phase S/W/H, |reference rate|, reference yaw, target index
+    r.demoPhase = slew.phaseChar();
+    r.rateRef = slew.refRate();
+    r.yawRefDeg = slew.refYawDeg();
+    r.testStep = slew.index();
+  }
   logger.logRow(r);
 }
 
@@ -463,14 +695,16 @@ static void handleCommand(const Command& c, CommandLink& from) {
     case Cmd::Status: {
       const Vec3 e = ekf.eulerRad() * kRadToDeg;
       const Vec3 s = ekf.sigmaRad() * kRadToDeg;
-      char msg[300];
+      char ws[kN + 1];
+      wheelStatus(ws);
+      char msg[320];
       snprintf(msg, sizeof(msg),
                "S,%c,%.1f,%.1f,%.1f,sig_yaw=%.2f,%.0f,%.0f,%.0f,%.0f,sd=%s,drop=%lu,demo=%c,"
                "miss=%lu,chipgap=%lu,maxgap=%.0f,lat=%.2f,int=%lu,svc=%lu/%lu,ev=%lu,rst=%lu,en=%lu/%d,intpin=%d,"
-               "wheels=%c%c%c%c,mag=%c,mres=%.2f,bz=%.5f\n",
+               "wheels=%c%c%c%c,mag=%c,mres=%.2f,bz=%.5f,wst=%s,fault=%c\n",
                stateChar(), e.x, e.y, e.z, s.z, wheels[0].speed(), wheels[1].speed(), wheels[2].speed(),
                wheels[3].speed(), logger.sdActive() ? logger.fileName() : "off",
-               (unsigned long)logger.droppedRows(), demo.phaseChar(), (unsigned long)seqMissed,
+               (unsigned long)logger.droppedRows(), slew.active() ? slew.phaseChar() : demo.phaseChar(), (unsigned long)seqMissed,
                (unsigned long)chipGaps, maxGyroGapMs, imu.maxLatencyUs() * 1.0e-3f,
                (unsigned long)imu.intCount(), (unsigned long)imu.serviceCount(),
                (unsigned long)imu.freshCount(),
@@ -478,7 +712,7 @@ static void handleCommand(const Command& c, CommandLink& from) {
                (unsigned long)imu.enableCount(), imu.lastEnableOk() ? 1 : 0,
                kPinImuInt >= 0 ? digitalRead(kPinImuInt) : -1, wheelEnabled[0] ? 'A' : '-',
                wheelEnabled[1] ? 'B' : '-', wheelEnabled[2] ? 'C' : '-', wheelEnabled[3] ? 'D' : '-', magAid.modeChar(),
-               magAid.headingResidualDeg(), ekf.gyroBias().z * kRadToDeg);
+               magAid.headingResidualDeg(), ekf.gyroBias().z * kRadToDeg, ws, fault.phaseChar());
       from.send(msg);
       break;
     }
@@ -488,11 +722,39 @@ static void handleCommand(const Command& c, CommandLink& from) {
     case Cmd::DemoLevel:
       startDemo(from, true);
       break;
+    case Cmd::SlewTest:
+      startSlew(from);
+      break;
+    case Cmd::SlewList:
+      for (int i = 0; i < params::kSlewNumTargets; i++) sayTarget("SLEW target", i);
+      break;
+    case Cmd::SlewSet:
+      if (state != State::Idle) {
+        from.send("# SLEW SET REFUSED: not idle\n");
+      } else if (!slew.setTarget(c.wheel, c.v[0], c.v[1], c.v[2])) {
+        from.send("# SLEW SET REFUSED: target 1-4, tilt <= 25 deg\n");
+      } else {
+        sayTarget("SLEW target set", c.wheel);
+      }
+      break;
     case Cmd::Calibrate:
       startCalibration(c, from);
       break;
+    case Cmd::FaultTest:
+      startFaultTest(c, from);
+      break;
+    case Cmd::FaultClear:
+      clearFaults(from);
+      break;
     case Cmd::Stop:
-      if (magStep >= 0) {
+      if (slew.active()) {
+        if (slew.done()) {
+          char msg[64];
+          snprintf(msg, sizeof(msg), "# SLEW TEST STOPPED: %d/%d PASS\n", slew.passCount(), params::kSlewNumTargets);
+          sayAll(msg);
+        }
+        disarm(slew.done() ? "SLEW_TEST_DONE" : "SLEW_STOPPED");
+      } else if (magStep >= 0) {
         disarm("MAGMAP_STOPPED");
       } else {
         stopDemo(from);
@@ -508,6 +770,8 @@ static void handleCommand(const Command& c, CommandLink& from) {
         break;
       }
       wheelEnabled[c.wheel] = c.value != 0.0f;
+      wheelDead[c.wheel] = false;
+      deadDet[c.wheel].reset();
       encFaultS[c.wheel] = 0.0f;
       prevSpeed[c.wheel] = wheels[c.wheel].speed();
       char msg[48];
@@ -604,7 +868,8 @@ static void pollCommands() {
 // Returns a reason string if the Armed state must be abandoned, else nullptr.
 static const char* safetyViolation() {
   const Vec3 e = ekf.eulerRad();
-  const float lim = params::kMaxTiltDeg * kDegToRad;
+  // SLEW TEST keeps the table under 25 deg (the bubble has no top).
+  const float lim = (slew.active() ? params::kSlewMaxTiltDeg : params::kMaxTiltDeg) * kDegToRad;
   if (fabsf(e.x) > lim || fabsf(e.y) > lim) return "TILT";
   if (norm(ekf.bodyRate()) > params::kMaxRateRadS) return "RATE";
   for (int i = 0; i < kN; i++)
@@ -619,6 +884,8 @@ static void controlStep(float dt) {
     disarm(bad);
     return;
   }
+
+  if (slew.active() && !stepSlew(dt)) return;
 
   if (demo.active()) {
     const Vec3 e = ekf.eulerRad();
@@ -670,6 +937,8 @@ static void controlStep(float dt) {
 
   const Vec3 omega = ekf.bodyRate();
   const Vec3 tau = ctrl.update(ekf.quaternion(), omega, dt, wheelMomentum(omega));
+  if (fault.active())
+    reportFault(fault.step(dt, ctrl.angleError() * kRadToDeg, fault.wheel() >= 0 ? wheels[fault.wheel()].speed() : 0.0f));
 
   float u[kN];
   if (!allocate(tau, wheelEnabled, u)) {
@@ -684,7 +953,9 @@ static void controlStep(float dt) {
   }
   // Null mode: hold the [+1,-1,+1,-1] wheel-speed combination at the bias (no body torque).
   // DEMO SPIN keeps the wheels at ~100 rpm so no shaft sits still (magnetometer, mag_map.h).
-  const float nullBias = demo.active() ? demo.wheelBias() : params::kNullBiasRadS;
+  float nullBias = demo.active() ? demo.wheelBias() : params::kNullBiasRadS;
+  // FAULT TEST keeps the wheels turning so a dead motor shows up at once (wheel_fault.h).
+  if (fault.wheelBias() > nullBias) nullBias = fault.wheelBias();
   if (all) addNullSpaceTorque(spd, params::kWheelInertia, params::kNullGain, nullBias, u);
 
   for (int i = 0; i < kN; i++) {
@@ -721,6 +992,22 @@ static void wheelLoop(float dt) {
       snprintf(msg, sizeof(msg), "# WHEEL FAULT %c: %s - wheel disabled (WHEEL %c ON to re-enable)\n", 'A' + i,
                jump ? "speed jump (encoder glitch)" : "driven but encoder shows no motion", 'A' + i);
       sayAll(msg);
+      onWheelFailed(i);
+    }
+    // Dead motor: driven hard (Armed) but the wheel doesn't accelerate. Uses the duty applied over
+    // the last interval, which is what moved the wheel to its new speed.
+    if (state != State::Armed || !wheelEnabled[i]) {
+      deadDet[i].reset();
+    } else if (deadDet[i].update(wheels[i].axisDuty() - w / params::kWheelFreeSpeedRadS, w, dt)) {
+      wheelEnabled[i] = false;
+      wheelDead[i] = true;
+      wheels[i].coast();
+      char msg[128];
+      snprintf(msg, sizeof(msg),
+               "# WHEEL FAULT %c: dead motor (driven, not accelerating) - disabled, coasting; control on the rest\n",
+               'A' + i);
+      sayAll(msg);
+      onWheelFailed(i);
     }
   }
 
@@ -744,7 +1031,12 @@ static void wheelLoop(float dt) {
 
   for (int i = 0; i < kN; i++) {
     if (!wheelEnabled[i]) {
-      wheels[i].stop();  // disabled (fault or WHEEL x OFF): never driven, in any mode
+      // Disabled: never driven, in any mode. A dead motor coasts (zero current); others brake.
+      if (wheelDead[i]) {
+        wheels[i].coast();
+      } else {
+        wheels[i].stop();
+      }
     } else if (state == State::Manual) {
       // Ramp the setpoint toward the SPEED target (limits overshoot and current surges).
       // The integrator is held while ramping so it doesn't wind up and overshoot at the end.
@@ -932,7 +1224,11 @@ void loop() {
         }
         Vec3 mUse, ref;
         lastMagResult = MagResult::Gated;
-        if (magAid.update(s.v, cnt, spd, wheelEnabled, ekf.quaternion(), dtMag, mUse, ref))
+        // A dead-motor wheel still moves (coasting) and its encoder works: keep it in the mag aid's
+        // wheel-state check so its new stopping place can't leave a stale field offset.
+        bool magWheels[kN];
+        for (int i = 0; i < kN; i++) magWheels[i] = wheelEnabled[i] || wheelDead[i];
+        if (magAid.update(s.v, cnt, spd, magWheels, ekf.quaternion(), dtMag, mUse, ref))
           lastMagResult = ekf.updateMagYaw(mUse, ref, params::kMagHeadingSigmaRad);
       }
       if (usbRaw) printRawRow(s.t_us);

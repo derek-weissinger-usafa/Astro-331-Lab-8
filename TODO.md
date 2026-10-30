@@ -133,9 +133,19 @@ disables a wheel automatically. Raw data: `test_runs/MAGCAL_2026-10-27_t1..t4_*.
       rotate (~1.5 turns), `STOP` / `KILL` ready on the XBee, watch the levelling phase. Expected
       ~6.4 rpm with the current model; logs to `DEMO_####.CSV`.
 - [ ] Closed-loop `ARM` hold test (level, yaw 0), restrained first, then free.
-- [ ] **Requirement 3: wheel-failure detection** and reconfiguration (allocation already supports
-      3 wheels via `wheelEnabled[]`; detection not started).
-- [ ] Stretch: 4-attitude optimal-path slew.
+- [ ] 🧪 **`SLEW TEST`** (stretch, first draft 2026-10-29): first run with yaw-only targets at the rest tilt
+      (`SLEW SET n <rest roll> <rest pitch> <yaw>` for n = 1-4, rest tilt from `DEMO LEVEL`); simulated 4/4 PASS.
+      The default ±10° tilts need near-neutral vertical balance (motor-level sim: a 60 s swing passes 4/4; today's
+      3.3 s swing stops at the wheel limit 4.9 s in). Report: `Reports/Slew_and_Fault_Simulation.html`.
+      Holds target 4 until `STOP`; tilt limit 25° while it runs (bubble has no top).
+- [ ] 🧪 **Requirement 3: `FAULT TEST`** (first draft 2026-10-29, `wheel_fault.h/.cpp`): dead-motor detector
+      (driven, not accelerating) + simulated failure + grading; dead wheel coasts, the other 3 carry on. Simulated
+      9/9 PASS (detected 0.6-0.8 s, peak error ≤ 1.0°), no false alarms. **Needs all 4 wheels: fix wheel D's
+      encoder first.** First run: `FAULT TEST A`, then `DEMO LEVEL`; then `FAULT TEST REAL` + pull a motor lead.
+      On hardware check: the 800 rad/s² per unit effort figure (`TEST A 0.3` spin-up slope), and whether wheel C's
+      stiction (> 0.4 duty to start) trips the detector. Optional: one driver EN/ENB line on a Teensy pin for a
+      true coast (the firmware coasts at the zero-current duty instead).
+- [ ] Stretch: 4-attitude optimal-path slew (firmware first draft: `SLEW TEST`, above).
 
 ## Notes
 

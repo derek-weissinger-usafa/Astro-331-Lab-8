@@ -41,11 +41,31 @@ void WheelMotor::setDuty(float duty, float dt) {
   if (target < duty_ - step) target = duty_ - step;
 
   duty_ = target;
-  writePwm(duty_);
+  if (simDead_) {
+    writeCoast();
+  } else {
+    writePwm(duty_);
+  }
+}
+
+void WheelMotor::writeCoast() {
+  float d = speed_ / params::kWheelFreeSpeedRadS;
+  if (d > params::kMaxDuty) d = params::kMaxDuty;
+  if (d < -params::kMaxDuty) d = -params::kMaxDuty;
+  writePwm(d * motorSign_);
+}
+
+void WheelMotor::coast() {
+  duty_ = 0.0f;
+  writeCoast();
 }
 
 void WheelMotor::stop() {
   duty_ = 0.0f;
+  if (simDead_) {  // a dead motor can't brake
+    writeCoast();
+    return;
+  }
   analogWrite(pwm1_, 0);
   analogWrite(pwm2_, 0);
 }

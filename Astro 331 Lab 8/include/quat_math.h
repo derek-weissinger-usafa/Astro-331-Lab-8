@@ -128,6 +128,13 @@ inline Quat qFromRotVec(const Vec3& r) {
 }
 
 // Inverse of qFromRotVec: rotation vector (axis * angle, rad) of q, taking the short way round.
+// Attitude (inertial -> body) from 3-2-1 Euler angles (rad); inverse of qToEuler321.
+inline Quat qFromEuler321(float roll, float pitch, float yaw) {
+  const Quat bodyToInertial = qmul(qmul(qFromRotVec({0.0f, 0.0f, yaw}), qFromRotVec({0.0f, pitch, 0.0f})),
+                                   qFromRotVec({roll, 0.0f, 0.0f}));
+  return qnormalize(qconj(bodyToInertial));
+}
+
 inline Vec3 qToRotVec(const Quat& qIn) {
   Quat q = qIn.w < 0.0f ? Quat{-qIn.w, -qIn.x, -qIn.y, -qIn.z} : qIn;
   const float s = sqrtf(q.x * q.x + q.y * q.y + q.z * q.z);

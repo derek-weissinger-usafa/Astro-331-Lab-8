@@ -17,7 +17,15 @@ class WheelMotor {
   // current limit, duty cap, slew limit and motor sign.
   // dt is the time since the previous call (s).
   void setDuty(float duty, float dt);
-  void stop();  // zero output immediately (no slew)
+  void stop();  // zero output immediately (no slew). EN/ENB are hard-wired, so this BRAKES.
+  // Zero motor current: drive at the back-EMF duty (speed / free speed), so the wheel coasts on
+  // its own friction. (A true coast needs EN or ENB on a Teensy pin.) Used for dead wheels.
+  void coast();
+
+  // FAULT TEST: simulate a dead motor (open lead / dead pack). Everything above this class still
+  // sees the commanded duty, but the motor is held at zero current (coast) in every mode.
+  void setSimulatedDead(bool on) { simDead_ = on; }
+  bool simulatedDead() const { return simDead_; }
 
   // Call at a fixed rate: updates the filtered wheel speed (rad/s) from encoder counts.
   void updateSpeed(float dt);
@@ -35,6 +43,7 @@ class WheelMotor {
 
  private:
   void writePwm(float signedDuty);
+  void writeCoast();
 
   int pwm1_, pwm2_;
   Encoder enc_;
@@ -43,4 +52,5 @@ class WheelMotor {
   float speed_ = 0.0f;  // rad/s, filtered
   long lastCount_ = 0;
   long zeroOffset_ = 0;
+  bool simDead_ = false;
 };

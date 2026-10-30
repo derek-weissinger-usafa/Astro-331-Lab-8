@@ -7,13 +7,6 @@ static constexpr float kPi = 3.14159265f;
 // Level attitude with yaw psi (inertial -> body): conj of an active rotation by psi about z.
 static Quat levelQuat(float psi) { return qconj(qFromRotVec({0.0f, 0.0f, psi})); }
 
-// Attitude (inertial -> body) from 3-2-1 Euler angles; inverse of qToEuler321.
-static Quat quatFromEuler321(float roll, float pitch, float yaw) {
-  const Quat bodyToInertial = qmul(qmul(qFromRotVec({0.0f, 0.0f, yaw}), qFromRotVec({0.0f, pitch, 0.0f})),
-                                   qFromRotVec({roll, 0.0f, 0.0f}));
-  return qnormalize(qconj(bodyToInertial));
-}
-
 void DemoSpin::start(const Quat& qStart, float targetRate, bool levelOnly) {
   levelOnly_ = levelOnly;
   target_ = levelOnly ? 0.0f : targetRate;
@@ -52,7 +45,7 @@ void DemoSpin::setLevelRef(float s, float sdot, float sddot) {
 }
 
 void DemoSpin::setRestRef() {
-  ref_.q = quatFromEuler321(rollRef_, pitchRef_, yaw_);
+  ref_.q = qFromEuler321(rollRef_, pitchRef_, yaw_);
   ref_.w = {0.0f, 0.0f, 0.0f};
   ref_.a = {0.0f, 0.0f, 0.0f};
 }

@@ -46,6 +46,9 @@ struct LogRow {
   int testStep = -1;         // MAG MAP schedule step (0-based, see mag_map.h); -1 = not running
   char magMode = '-';        // mag aid mode (MagAid::modeChar): - off, g gated, l/L learning, s/S in use
   float magResidDeg = 0;     // last field heading minus its reference, deg
+  char wheelStatus[5] = "....";  // per wheel: . in service, x failed by FAULT TEST (undetected), D dead (detected), - off
+  Vec3 errDeg{0, 0, 0};      // controller angle error (deg, body axes); 0 when not Armed
+  char faultPhase = '-';     // FAULT TEST: - off, w wait, F failed, h hold, P pass, X fail
 };
 
 class DataLogger {

@@ -15,8 +15,8 @@ Last updated 2026-10-21.
 |---|---|
 | 1. Hold a heading, no jitter or drift | Controller written and simulated; **not yet run closed-loop on the table**. Blocked by the gravity finding in §2.7: the table is bottom-heavy and rests ~3° off level, so the wheels can only hold level for ~1 s. Heading (yaw) has no gravity torque and is not blocked. |
 | 2. Attitude to ±1° in all axes | Roll/pitch: accelerometer-aided EKF, well within ±1° when static. Yaw: gyro-only (magnetometer excluded), drift ~3 °/h after warm-up + 180 s calibration (replay). IMU data path now reliable (§2.8). |
-| 3. Detect and compensate a wheel failure | Allocation already works with any 3 wheels (`wheelEnabled[]`); **detection not started**. |
-| Stretch: 4-attitude slew | Not started (reference generator from `DEMO SPIN` can be reused). |
+| 3. Detect and compensate a wheel failure | `FAULT TEST` first draft (§2.14): dead-motor detection, 3-wheel control, graded test. Simulated 9/9 PASS; not yet run on the table. |
+| Stretch: 4-attitude slew | `SLEW TEST` firmware first draft (§2.13): build-verified and simulated, not yet run on the table. |
 
 ---
 
@@ -172,12 +172,38 @@ What changed (`src/imu_bno085.cpp`, `src/main.cpp`, `src/data_logger.cpp`):
 - **2026-10-29: Teensy lost power after test 5** — boost outputs 5 V but no 5 V at the Teensy VIN pin, no
   3.3 V, no LEDs, not seen on USB. Blocks all testing; see report §1.7 and `TODO.md` §0.
 
+### 2.13 SLEW TEST, stretch requirement (2026-10-29, first draft)
+- New `SLEW TEST` command (`slew_test.h/.cpp`): four target attitudes, shortest-rotation (eigenaxis) slews on a
+  smooth profile from any starting attitude, reach each within ±1° in roll/pitch/yaw and hold 5 s, PASS/FAIL per
+  target. After the 4th target it keeps holding it until `STOP`. The tilt safety limit is 25° while it runs (the
+  bubble has no top). `SLEW SET` / `SLEW LIST` change and show targets. Build-verified; not yet run on the table.
+- 3-D simulation: balanced table 4/4 PASS (worst error ≈ 0.02°). The current pendulous table saturates a wheel
+  2.3 s into the first slew; yaw-only targets at the natural rest tilt pass 4/4. The default ±10° tilts need the
+  free-swing period ≳ 55 s (gravity stiffness ≤ 0.001 N·m/rad, CG within ~0.02 mm of the bearing centre).
+
+### 2.14 FAULT TEST, requirement 3 (2026-10-29, first draft)
+- **Detection** (`wheel_fault.h/.cpp`, always on while Armed): a motor driven hard (effort = duty − speed/160
+  ≥ 0.2) whose wheel gains < 25% of the predicted speed for 0.2 s is declared dead, taken out of service and
+  coasted at the zero-current duty (EN/ENB are hard-wired, so plain "off" would brake it and dump its momentum
+  into the table). The other three wheels carry on with whatever is running; allocation already handled 3 wheels.
+- **Test:** `FAULT TEST <A-D> [s]` kills that motor's output after the delay without telling the controller
+  (the rest of the firmware still sees the commanded duty, like an open lead), with the wheels idling at ±100 rpm
+  in the null mode so the failure shows up at once. Graded: right wheel detected within 1 s, back within ±1° within
+  10 s, then ±1° for 30 s. `FAULT TEST REAL` grades a failure you cause yourself (pull a lead); `FAULT CLEAR` undoes it.
+  Logs gain `wheel_status`, `err_roll/pitch/yaw_deg` (controller error) and `fault_phase`.
+- **Motor-level simulation** (back-EMF, friction, pack differences, encoder quantisation, firmware speed loop):
+  9/9 graded runs PASS: each wheel during DEMO LEVEL on today's pendulous table, mid-slew and mid-hold in SLEW TEST,
+  and an unplugged motor. Detected 0.6–0.8 s after the failure, peak error ≤ 1.0°. 0 false alarms in 4 healthy
+  runs. SLEW TEST re-simulated with the same model: balanced 4/4 PASS (≤ 0.08°); today's table with ±10° targets
+  stops at the wheel limit 4.9 s in; yaw-only targets at the rest tilt pass 4/4.
+  Deliverable: `Reports/Slew_and_Fault_Simulation.html`.
+
 ## 3. Open issues (details and owners in `TODO.md`)
 - **Teensy unpowered / not detected (2026-10-29)** — top blocker, see `TODO.md` §0.
 - **Table balance / pendulum** (§2.7): blocks levelling and attitude hold in roll/pitch.
 - **Wheel A rub and low pack A; wheel C high duty and oscillation.**
 - **Real table mass and inertia** still unmeasured (fits suggest x/y 0.05–0.13, z ~0.08 kg·m²).
-- **Wheel-failure detection** (requirement 3) not started.
+- **Wheel-failure test** (requirement 3) needs all four wheels: wheel D's encoder must be repaired first.
 - BNO085 periodic 60–90 ms stalls (cause unknown, currently harmless).
 - EKF noise retune from the static logs; wheel static-friction compensation; rotor momentum in the wheel model.
 
