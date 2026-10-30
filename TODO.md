@@ -26,12 +26,14 @@ disables a wheel automatically. Raw data: `test_runs/MAGCAL_2026-10-27_t1..t4_*.
       Results: XBee link OK; after reseating the IMU wiring, `rst=1`, `miss=0`, `maxgap=13` ms through
       calibration (a loose STEMMA/RST connection first gave 7 chip resets and ~1,100 lost samples). Hand-turn
       counts A −389 (1 turn), B −734 (2), C −1185 (3), clockwise = negative as expected, no swapped wires; D read
-      0 (encoder still broken). `TEST x 0.3`: A +45.0, B +45.7, C +37.5 rad/s, so motor/encoder signs are right
+      0 (loose encoder wire, since fixed). `TEST x 0.3`: A +45.0, B +45.7, C +37.5 rad/s, so motor/encoder signs are right
       on the spare. IMU stayed clean with motors running. SD card moved to the spare (detected when a test opens
-      a log). Its VIN–VUSB trace is cut: uploads need logic power on.
-- [ ] 🔧 **Wheel D encoder is broken** (one quadrature channel dead: counts stay ~0 while D spins at ~500 rpm,
-      ±1 flicker and fake −165 rad/s spikes while still). Check D's yellow (pin 9) / white (pin 5) wires and the
-      encoder board. Until fixed: `WHEEL D OFF` after every boot (the fault detector also trips it).
+      a log). Its VIN–VUSB trace is cut: uploads need logic power on. Wheel D: see below (fixed).
+- [x] 🔧 **Wheel D encoder — FIXED 2026-10-30: an encoder wire was almost pulled out.** Symptoms were one
+      quadrature channel dead (counts ~0 while D spun at ~500 rpm, ±1 flicker, fake −165 rad/s spikes while still).
+      After reseating: `TEST D 0.3` +44.9 rad/s (+2,445 counts), `TEST D -0.3` −46.8 rad/s (−2,606), no encoder-fault
+      trips, so both channels work and the signs are right. `WHEEL D OFF` is no longer needed. Secure that
+      connector (strain relief / hot glue) so it can't work loose again.
 - [x] Findings: a stopped wheel's field depends on where its shaft stopped (1–5 µT ≈ 3–13°); a spinning wheel's
       mean field is repeatable and nearly speed-independent, but **reversing a wheel shifts it 0.6–1.6 µT**
       (modelled: `kDirStep`, `kSpeedSlope`, residual ≤ 0.8° per wheel alone). Horizontal field ≈ 21.5 µT
