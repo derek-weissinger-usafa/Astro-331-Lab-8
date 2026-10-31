@@ -282,9 +282,39 @@ stand (z bias −0.0379 °/s), table floated, then two holds over the XBee; whee
   IMU: 168 samples missed (0.3%), and one chip reset while the table was being floated: strain-relieve the STEMMA/INT/RST
   wiring.
 
+### 2.18 Balance session and dead-motor false alarms (2026-10-31) — `test_runs/balance_iterations_2026-10-31.txt`, `DEMO_0004/0005.CSV`
+- **Balance:** iterative trim with rest-tilt readings (`tools/rest_tilt.py`: BIAS 0 + DEMO LEVEL over the XBee). The IMU mount
+  rocked (glued; `LEVEL ZERO` with a phone level, then re-done 1.5 h later: the glue crept 1.1° in pitch). Repeat readings
+  scatter ~0.3°, plus ~0.3° that turns with heading (fixed in the room); readings at one heading (tape markers, wheel C at
+  the tape) agree within ~0.15°. Then the loose heavy weights and top screws came off (swing 4.3 → 2.9 s, CG ~5.7 →
+  ~13 mm below the bearing centre: twice as stiff, ~1,150 g·mm per degree, so a re-seated pack moves it only ~0.4°), and
+  washers in the diagonal seats trimmed it (3 × 8 g on CD and on AD: +2.3° roll, as predicted). A wheel-A kick on the
+  floating table swung it in roll only, confirming the IMU axes match the wheel layout. **Final rest tilt ≈ −0.9° roll /
+  −0.7° pitch.**
+- **Decision: stop fine balancing.** Requirements 1–3 run at the rest tilt (DEMO LEVEL), so they don't need it; tilted slews
+  need the CG within ~0.02 mm, impossible by hand with packs re-velcroed at every charge (±1° per pack). Trim only if the
+  rest tilt exceeds ~±5°.
+- **Dead-motor false alarms (fixed, built, not uploaded):** 14 flags in the two logs (13 on D, 1 on A), every one a wheel
+  starting from rest while the speed loop wound its duty up to 0.23–0.30 without the wheel moving (static friction). Healthy
+  starts break away at 0.10–0.15 (up to 0.27). The detector now needs effort ≥ 0.4 (near the current limit) for a wheel at
+  standstill; a replay of both logs gives 0 flags. Spinning-wheel detection (FAULT TEST) is unchanged. Uploaded; wheel D
+  then tripped the encoder check instead (stuck > 0.5 s above 0.2 duty), so that threshold is now 0.4 too
+  (uploaded). Wheel speed limit raised 60 → 80 rad/s (full motor torque up to ~79 rad/s at 12 V; uploaded).
+- **Wheel D was weak, then wasn't:** 1 s at 0.3 duty reached 33–36 rad/s vs 46–47 for A–C (packs all 12.0 V). Later, after
+  the pack-voltage check and a power cycle: encoder exact (10 hand turns = 4,002 counts), no drag by hand, and D 45.6–46.8 rad/s
+  both directions (C 45.9–46.2). Likely an intermittent connection in D's power path (pack lead, driver terminals, motor
+  leads) disturbed during the check: inspect it. Health check before runs: `TEST A..D 0.3` (table held), all ≈ 46 rad/s.
+- **Vibration check at the new limit** (table clamped, `SPEED ALL` 0→760→−760 rpm, `STATIC_0008 31 Oct.CSV`): accel sd 0.02 m/s²
+  at rest, ≤ 0.10 m/s² up to ±760 rpm, gyro unchanged; all wheels held 756–764 rpm at 0.47–0.48 duty. 80 rad/s is fine.
+- **IMU sample loss is SD-logging stalls, not vibration:** pairs of 60–130 ms gaps (5–12 reports lost) every ~1.67 MB of log
+  (~53 s), wheels stopped or spinning alike (same in DEMO_0004/0005: 0.3% lost, 140 ms at log open). Gaps over the 100 ms IMU
+  timeout were skipped by the EKF (rotation lost); the timeout is now 300 ms so they are integrated (uploaded).
+  Root cause in the SD path still open.
+
 ## 3. Open issues (details and owners in `TODO.md`)
 - **Wheel D's encoder connection is intermittent** (reseated twice 2026-10-30): solder/crimp + strain relief.
-- **Table balance / pendulum** (§2.7): blocks levelling and attitude hold in roll/pitch.
+- **Table balance / pendulum** (§2.7, §2.18): blocks levelling and tilted slews; requirements 1–3 work at the rest tilt.
+- **Wheel D intermittent weakness** (§2.18): 25% slow earlier on 10-31, normal later; check its power-path connections.
 - **Wheel A rub and low pack A; wheel C high duty and oscillation.**
 - **Real table mass and inertia** still unmeasured (fits suggest x/y 0.05–0.13, z ~0.08 kg·m²).
 - **Wheel-failure test** (requirement 3): all four wheels run again; ready for a first table run once wheel D's connection is permanent.

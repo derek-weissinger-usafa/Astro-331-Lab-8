@@ -26,7 +26,10 @@ bool DeadMotorDetector::update(float effort, float speed, float dt) {
   if (blockT_ < params::kDeadBlockS) return false;
 
   const float meanEffort = effortSum_ / blockT_;
-  if (fabsf(meanEffort) >= params::kDeadEffort) {
+  // A wheel at rest needs more effort to break away (static friction): judge it only near the
+  // current limit there.
+  const bool still = fabsf(speed0_) < params::kDeadStillRadS && fabsf(speed) < params::kDeadStillRadS;
+  if (fabsf(meanEffort) >= (still ? params::kDeadStillEffort : params::kDeadEffort)) {
     const float predicted = params::kMotorAccelPerEffort * effortSum_;  // speed gain (rad/s)
     const float gained = (speed - speed0_) * (meanEffort > 0.0f ? 1.0f : -1.0f);
     if (gained < params::kDeadResponseFrac * fabsf(predicted)) {

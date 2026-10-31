@@ -31,14 +31,22 @@ constexpr float kAttIntegralClamp = 0.2f;  // rad s
 // a true ~50 rad/s at 0.30-0.31 duty => ~160-167 rad/s per unit duty (~1600 rpm free at 12 V).
 // (Earlier figures of 88 and 100 were in mis-scaled 10:1 units and are superseded.)
 constexpr float kWheelFreeSpeedRadS = 160.0f;  // speed-loop feedforward + back-EMF current limit
-constexpr float kWheelMaxSpeedRadS = 60.0f;    // command limit (~573 rpm); well under free speed
+// Command limit (~764 rpm; was 60 until 2026-10-31). The accelerating torque left at speed w is
+// min(I_limit/I_stall = 0.45, kMaxDuty - w/free speed): full torque up to ~79 rad/s on a 12 V pack
+// (~90% on a sagging ~11 V pack). Above ~90 it falls off fast (71% at 100, 44% at 120), and wheel D
+// (~25% slower than A-C at the same duty, 2026-10-31) has less. Raise toward ~100 only after D's
+// drag is fixed and a clamped run at the new speed shows no vibration problem.
+constexpr float kWheelMaxSpeedRadS = 80.0f;
 // Manual (SPEED) mode feedforward. Same motors, so same measured value as above.
 constexpr float kManualFreeSpeedRadS = 160.0f;
-constexpr float kWheelOverspeedRadS = 70.0f;   // measured speed above this => disarm
+constexpr float kWheelOverspeedRadS = 90.0f;   // measured speed above this => disarm (kWheelMaxSpeedRadS + 10)
 // Encoder fault detection: |duty| above kEncFaultDuty with |speed| below kEncFaultSpeedRadS for
 // kEncFaultTimeS (the motor alone reaches ~160 rad/s per unit duty), or a speed change faster
 // than kEncFaultMaxAccelRadS2 (stall torque / wheel J is ~1000 rad/s^2), disables the wheel.
-constexpr float kEncFaultDuty = 0.2f;
+// 0.4, not 0.2 (2026-10-31): a healthy wheel stuck at rest by static friction can sit at 0.2-0.3
+// duty for over 0.5 s (wheel D, after the dead-motor detector got the same fix). A lost encoder
+// reads 0, so the speed loop still winds up to the current limit (0.45 at rest) and trips this.
+constexpr float kEncFaultDuty = 0.4f;
 constexpr float kEncFaultSpeedRadS = 1.0f;
 constexpr float kEncFaultTimeS = 0.5f;
 constexpr float kEncFaultMaxAccelRadS2 = 3000.0f;
@@ -50,7 +58,7 @@ constexpr float kNullGain = 5.0f;             // 1/s
 constexpr float kHoldWheelMinRadS = 10.47f;  // 100 rpm (also clear of the ~50 rpm resonance)
 // ...but the bias never drives a wheel above this (under kDemoWheelAbortRadS), so it can't end a
 // hold early: with roll/pitch momentum stored (pendulous table) full clearance would cost peak speed.
-constexpr float kHoldBiasMaxPeakRadS = 45.0f;
+constexpr float kHoldBiasMaxPeakRadS = 65.0f;  // kDemoWheelAbortRadS - 10
 
 // Per-wheel signs, found during bring-up (see CLAUDE.md). +1 = as wired.
 //  Positive wheel speed is a right-hand rotation about the wheel axis in wheel_geometry.h.
@@ -84,7 +92,12 @@ constexpr int kPwmBits = 12;
 // ---- Safety limits (supervisor disarms the wheels when exceeded) ----
 constexpr float kMaxTiltDeg = 30.0f;     // roll or pitch
 constexpr float kMaxRateRadS = 2.0f;
-constexpr uint32_t kImuTimeoutMs = 100;
+// Gyro gaps up to this are integrated (main.cpp); longer ones are dropped, and disarm when Armed.
+// 300 ms, not 100 (2026-10-31): with SD logging on, loop() stalls in pairs every ~1.67 MB of log
+// (~53 s) and the BNO085 drops 5-12 reports (gaps 60-130 ms, up to 140 ms at log open; STATIC_0008
+// 31 Oct, DEMO_0004/0005), independent of wheel speed. Gaps over 100 ms were skipped, losing the
+// rotation in them (~0.75 deg at a 0.1 rad/s slew).
+constexpr uint32_t kImuTimeoutMs = 300;
 
 // ---- Rates ----
 // Sensor collection and control run at 100 Hz: the gyro report (imu_bno085.cpp) drives
@@ -108,9 +121,13 @@ constexpr uint32_t kMagMapStepMs = 20000;  // hold per step (ramp ~1-2 s + settl
 // ---- IMU mounting (LEVEL ZERO) ----
 // Roll/pitch the IMU reads when the DECK is level (spirit level, table clamped): every IMU sample
 // is rotated by this into the table frame, so the reported attitude (requirement 2) is the
-// table's, not the IMU board's. 0 = IMU assumed level on its mount (not measured yet).
-constexpr float kImuMountRollDeg = 0.0f;
-constexpr float kImuMountPitchDeg = 0.0f;
+// table's, not the IMU board's. Measured with LEVEL ZERO 2026-10-31 after the IMU was glued to its mount
+// (it could rock before, which made the balance rest-tilt readings jump); deck levelled with a phone
+// level calibrated by reversal. Re-measured ~1.5 h later (pitch had moved 1.1 deg: the glue was still
+// creeping; first value 3.649 / -1.033). Re-check with the phone level once it has cured, and if the IMU
+// is ever remounted.
+constexpr float kImuMountRollDeg = 3.611f;
+constexpr float kImuMountPitchDeg = -2.164f;
 constexpr float kLevelZeroS = 5.0f;  // LEVEL ZERO averaging time
 
 // ---- Heading step responses on the air bearing ("STEP TEST", step_test.h) ----
@@ -181,7 +198,7 @@ constexpr float kManualReleaseRadS = 0.3f;
 // ---- Demo: level, then spin counter-clockwise about +z (XBee "DEMO SPIN", "STOP") ----
 // Requested 30 rpm, but the rate actually used is capped by the wheels' z-momentum budget:
 //   rate = margin * sum(a_i.z) * J * (kWheelMaxSpeedRadS - kDemoWheelBiasRadS) / I_zz
-//        (~0.55 rad/s = 5.3 rpm with the 100 rpm wheel bias; 6.4 rpm without it)
+//        (~0.77 rad/s = 7.4 rpm with the 100 rpm wheel bias; 8.5 rpm without it, at 80 rad/s)
 constexpr float kDemoRequestedRateRadS = 3.14159265f;  // 30 rpm
 constexpr float kDemoMomentumMargin = 0.8f;    // leave 20% for levelling, drag, tracking error
 constexpr float kDemoLevelRateRadS = 0.1f;     // max reference tilt rate while levelling (~6 deg/s)
@@ -206,7 +223,7 @@ constexpr float kDemoSettleS = 5.0f;           // hold heading at rest (and ramp
 // The z spin drives all wheels the same way, so A and C cross zero briefly on each ramp.
 constexpr float kDemoWheelBiasRadS = 10.47f;   // 100 rpm
 constexpr float kDemoStartMaxWheelRadS = 2.0f; // wheels must be ~stopped to start
-constexpr float kDemoWheelAbortRadS = 55.0f;   // any wheel above this => spin down early
+constexpr float kDemoWheelAbortRadS = 75.0f;   // any wheel above this => spin down early (max - 5)
 
 // ---- SLEW TEST (stretch requirement; slew_test.h) ----
 // Four attitudes: roll, pitch (deg from level) and yaw (deg, relative to the heading at start).
@@ -241,8 +258,17 @@ constexpr float kSlewHoldS = 5.0f;           // requirement: hold each attitude 
 // Margins (sim_fault.py): a healthy wheel at e = 0.2 gains >= ~120 rad/s^2; the 0.25 x 800 x 0.2
 // = 40 rad/s^2 threshold sits above friction-only deceleration (~20-30 rad/s^2, rubbing wheel).
 // Simulated detection: 0.6-0.8 s after the failure; no false trips in healthy runs.
+// Standstill (block starts and ends below kDeadStillRadS): a healthy wheel only breaks away from
+// rest at effort ~0.10-0.15, sometimes up to ~0.27 (static friction; DEMO_0004/0005, 230 starts),
+// so there a block counts only at mean |e| >= kDeadStillEffort, just under the current-limit cap
+// (kMotorCurrentLimitA / kMotorStallCurrentA = 0.45). With 0.2 everywhere, 14 healthy starts were
+// flagged dead (13 on wheel D, which sticks more), all with the wheel stuck at e 0.23-0.30.
+// Replaying the two logs with this rule: 0 flags. A dead motor at rest still trips once the speed
+// loop winds up to the current limit; a spinning one (FAULT TEST's wheel bias) is unaffected.
 constexpr float kMotorAccelPerEffort = 800.0f;  // rad/s^2 per unit effort
 constexpr float kDeadEffort = 0.2f;
+constexpr float kDeadStillRadS = 2.0f;
+constexpr float kDeadStillEffort = 0.4f;
 constexpr float kDeadResponseFrac = 0.25f;
 constexpr float kDeadBlockS = 0.1f;
 constexpr float kDeadDetectS = 0.2f;

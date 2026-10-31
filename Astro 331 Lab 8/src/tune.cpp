@@ -34,7 +34,7 @@ static const Param kParams[] = {
     {"MAG_SIGMA", &magSigma, 0.02f, 3.0f, "mag heading noise rad"},
     {"NULL_GAIN", &nullGain, 0.0f, 20.0f, "null-mode gain 1/s"},
     {"HOLD_MIN", &holdMinRadS, 0.0f, 30.0f, "hold wheel clearance rad/s"},
-    {"HOLD_PEAK", &holdMaxPeak, 10.0f, 55.0f, "hold bias peak wheel rad/s"},
+    {"HOLD_PEAK", &holdMaxPeak, 10.0f, 75.0f, "hold bias peak wheel rad/s"},
     {"MAG_HX", &magHard[0], -100.0f, 100.0f, "mag hard iron x uT"},
     {"MAG_HY", &magHard[1], -100.0f, 100.0f, "mag hard iron y uT"},
     {"MAG_HZ", &magHard[2], -100.0f, 100.0f, "mag hard iron z uT"},

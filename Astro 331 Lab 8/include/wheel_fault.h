@@ -16,9 +16,11 @@
 // A responsive block clears the count; blocks with too little effort to judge leave it as is.
 // A dead motor quickly earns large effort: its wheel coasts down on friction while the speed
 // loop asks for the opposite, and the loop's integrator winds up to the current limit.
+// At standstill (block starts and ends below kDeadStillRadS) the effort threshold is
+// kDeadStillEffort instead: healthy wheels need up to ~0.27 effort to break away from rest.
 // Limits: a wheel that is never driven can't be checked (a stopped motor with no torque demand
 // looks the same dead or alive), hence the wheel bias in FAULT TEST. A healthy wheel stuck by
-// stiction above kDeadEffort for kDeadDetectS is reported dead too (it is not producing torque).
+// stiction above kDeadStillEffort for kDeadDetectS is reported dead too (it is not producing torque).
 class DeadMotorDetector {
  public:
   void reset();
