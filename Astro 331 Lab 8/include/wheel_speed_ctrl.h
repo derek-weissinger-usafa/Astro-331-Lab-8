@@ -1,9 +1,10 @@
 #pragma once
 #include "control_params.h"
+#include "tune.h"
 
 // Inner wheel speed loop: feedforward + PI on encoder speed, output is motor duty
 // in [-maxDuty, +maxDuty]. No current sensing is available, so this is the
-// only per-wheel loop. Anti-windup by clamping the integrator.
+// only per-wheel loop. Anti-windup by clamping the integrator. Gains: tune.h (SET SPD_KP / SPD_KI).
 class WheelSpeedLoop {
  public:
   void reset() { integral_ = 0.0f; }
@@ -14,11 +15,11 @@ class WheelSpeedLoop {
   float update(float cmd, float meas, float dt, float freeSpeed = params::kWheelFreeSpeedRadS,
                bool integrate = true) {
     const float err = cmd - meas;
-    if (integrate) integral_ += params::kSpeedKi * err * dt;
+    if (integrate) integral_ += tune::speedKi * err * dt;
     if (integral_ > params::kSpeedIntegralClamp) integral_ = params::kSpeedIntegralClamp;
     if (integral_ < -params::kSpeedIntegralClamp) integral_ = -params::kSpeedIntegralClamp;
 
-    float duty = cmd / freeSpeed + params::kSpeedKp * err + integral_;
+    float duty = cmd / freeSpeed + tune::speedKp * err + integral_;
     if (duty > params::kMaxDuty) duty = params::kMaxDuty;
     if (duty < -params::kMaxDuty) duty = -params::kMaxDuty;
     return duty;

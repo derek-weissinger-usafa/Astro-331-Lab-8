@@ -165,6 +165,19 @@ down; (3) a damaged Teensy (swap in a spare and re-flash). Pack C still needs it
 
 ---
 
+### 1.8 MAG TEST with all four wheels, 2026-10-30 (`test_runs/MAGTEST_0001_report.html`)
+Scripted on-board test (`MAG TEST`, `mag_test.h`), fixed table, 37 graded steps over 57 min. **36/37 within ±1°**; the miss was
+step 36 (all wheels 300 rpm), 1.02°. The gyro alone (log replayed with the aid off) drifts 5.7 °/h. Replaying the log showed
+the cause: every new direction pattern's reference was learned at the current yaw error, so the error random-walks.
+Predicting new patterns' references from a known one instead (via the MAGMAP_0003 wheel model) gives 37/37, worst 0.77°;
+that became the firmware default (`kMagPredictNewPatterns`). Details in `PROGRESS_LOG.md` §2.15.
+
+### 1.9 Rerun with prediction, 2026-10-31 (`test_runs/MAGTEST_0002_report.html`)
+Stopped at step 15, **10/15**: first visits to −−−−, +−−− and −−++ were off by up to 1.2°. The wheel-reversal model moved
+~1° between the sessions (raw |B| 71 → 65 µT: the surroundings changed). Replaying both runs both ways: learned 1.02° / 0.78°,
+predicted 0.77° / 1.49°. The default went back to learning in place; each new pattern costs 0.3–1.2° of reference error
+either way, which is the floor of the magnetometer's position next to the wheels. Details in `PROGRESS_LOG.md` §2.16.
+
 ## 2. What still needs to be done
 
 In order. 🔧 = hands-on hardware, 💻 = firmware/analysis, 🧪 = table test.

@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 
+#include "control_params.h"
 #include "quat_math.h"
 
 // Magnetometer heading aid: turns the raw (uncalibrated) BNO085 field into heading updates for
@@ -26,10 +27,24 @@
 // learned while the aid is "fresh": an update was applied within kMagLearnMaxGapS (or the startup
 // calibration just ended). Otherwise the state stays gated and the gyro dead-reckons, as it does
 // through anything in between (a wheel slow, starting, stopping or reversing).
+// New spinning direction patterns are learned in place while the aid is fresh; when it is stale
+// their reference is predicted from the known pattern with the fewest wheels reversed (correct()
+// already removes each wheel's measured reversal step). kMagPredictNewPatterns = true predicts
+// every new pattern after the first instead. Neither is reliably better (fixed-table MAG TEST,
+// all four wheels, replayed both ways):
+//   MAGTEST_0001: learned 36/37 within 1 deg (worst 1.02), predicted 37/37 (0.77)
+//   MAGTEST_0002: learned 15/15 (0.78), predicted 10/15 (1.49, as run)
+// Learning inherits the yaw error at that moment, so errors random-walk over many pattern changes;
+// prediction carries the reversal model's error, which moved ~1 deg between the two sessions (raw
+// |B| 71 vs 65 uT: the magnetic surroundings changed). Holds change pattern only once or twice
+// (null_bias.h), so learning is the default. Stopped references are always learned in place
+// (they depend on where each shaft stops).
 // Disabled wheels (WHEEL x OFF / encoder fault) are assumed not to move; their field is part of
 // every reference.
-// Not modelled: the table's own hard iron. The references are learned near the hold heading,
-// so this only matters for large yaw changes (slews).
+// Table hard iron (a field fixed to the body, e.g. magnetised steel near the IMU): subtracted
+// first (setHardIron; SET MAG_HX/HY/HZ, fitted with tools/hardiron_fit.py from a yaw turn). The
+// references are learned near the hold heading, so it only matters once the table yaws (DEMO SPIN,
+// slews); left at 0, a 10 deg turn moves the field heading by up to a few degrees too much or little.
 class MagAid {
  public:
   enum class Mode : uint8_t { Off, Gated, LearnStopped, LearnSpinning, Stopped, Spinning, Stale };
@@ -51,14 +66,26 @@ class MagAid {
   char modeChar() const;
   float headingResidualDeg() const { return residDeg_; }  // last field heading vs reference
   Vec3 filtered() const { return lp_; }                    // low-passed corrected field (uT)
+  int predictedCount() const { return predicted_; }        // spinning references predicted, not learned
+  // true: predict every new direction pattern's reference (except the first one) instead of
+  // learning it in place (default kMagPredictNewPatterns = false; log replay comparisons).
+  void setPredictAlways(bool on) { predictAlways_ = on; }
+  // Table-fixed field (body frame, uT) removed before anything else. A change invalidates every
+  // reference (they were learned with the old offset); they are re-learned as the states recur.
+  void setHardIron(const Vec3& h);
+  Vec3 hardIron() const { return hard_; }
 
  private:
   static constexpr int kSpinRefs = 16;  // one per direction pattern of the 4 wheels
   enum class WheelState : uint8_t { Gated, Stopped, Spinning };
 
   Vec3 correct(const Vec3& m, const float speed[4], const bool enabled[4]) const;
+  int nearestSpinRef(int pattern, const bool enabled[4]) const;
 
   bool enabled_ = true;
+  bool predictAlways_ = params::kMagPredictNewPatterns;
+  Vec3 hard_{0, 0, 0};
+  int predicted_ = 0;
   Mode mode_ = Mode::Off;
   Vec3 lp_{0, 0, 0};
   bool lpInit_ = false;

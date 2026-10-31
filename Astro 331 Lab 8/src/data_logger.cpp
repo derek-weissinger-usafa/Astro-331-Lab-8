@@ -12,7 +12,7 @@ static const char kHeader[] =
     "qw,qx,qy,qz,roll_deg,pitch_deg,yaw_deg,bias_x_rad_s,bias_y_rad_s,bias_z_rad_s,"
     "sig_roll_deg,sig_pitch_deg,sig_yaw_deg,accel_status,state,demo_phase,rate_ref_rad_s,yaw_ref_deg,"
     "gyro_seq,gyro_seq_missed,test_step,mag_mode,mag_resid_deg,wheel_status,err_roll_deg,err_pitch_deg,"
-    "err_yaw_deg,fault_phase\n";
+    "err_yaw_deg,fault_phase,enc_a,enc_b,enc_c,enc_d\n";
 
 // Built-in SD card in DMA mode. The SD library's own begin picks FIFO mode, whose write path
 // spins (without yield()) while the card programs flash mid-write; that froze loop() for up to
@@ -72,13 +72,13 @@ void DataLogger::logRow(const LogRow& r) {
   const int n = snprintf(
       line, sizeof(line),
       "%.3f,%.5f,%.5f,%.5f,%.3f,%.3f,%.3f,%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.1f,%.3f,%.3f,%.3f,%.3f,"
-      "%.6f,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%d,%c,%c,%.4f,%.3f,%d,%lu,%d,%c,%.2f,%s,%.3f,%.3f,%.3f,%c\n",
+      "%.6f,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%d,%c,%c,%.4f,%.3f,%d,%lu,%d,%c,%.2f,%s,%.3f,%.3f,%.3f,%c,%ld,%ld,%ld,%ld\n",
       r.ms, r.gyro.x, r.gyro.y, r.gyro.z, r.accel.x, r.accel.y, r.accel.z, r.mag.x, r.mag.y,
       r.mag.z, r.rpm[0], r.rpm[1], r.rpm[2], r.rpm[3], r.duty[0], r.duty[1], r.duty[2], r.duty[3],
       r.q.w, r.q.x, r.q.y, r.q.z, r.eulerDeg.x, r.eulerDeg.y, r.eulerDeg.z, r.bias.x, r.bias.y,
       r.bias.z, r.sigmaDeg.x, r.sigmaDeg.y, r.sigmaDeg.z, r.accelStatus, r.state, r.demoPhase,
       r.rateRef, r.yawRefDeg, r.gyroSeq, (unsigned long)r.seqMissed, r.testStep, r.magMode,
-      r.magResidDeg, r.wheelStatus, r.errDeg.x, r.errDeg.y, r.errDeg.z, r.faultPhase);
+      r.magResidDeg, r.wheelStatus, r.errDeg.x, r.errDeg.y, r.errDeg.z, r.faultPhase, r.enc[0], r.enc[1], r.enc[2], r.enc[3]);
   if (n <= 0 || n >= (int)sizeof(line)) return;
 
   if (sd_) {
@@ -118,18 +118,18 @@ void DataLogger::service() {
   // (calling yield(), which services the IMU, but loop() and control would still stall).
   if (SD.sdfs.card()->isBusy()) return;
 
-  // At most one chunk per call keeps each call's SD latency bounded.
-  if (len_ >= kChunk) {
-    if (!writeOut(kChunk)) failSd();
+  // Whole sectors only, up to kMaxWrite per call (bounded latency, and the file position stays
+  // sector-aligned so SdFat writes straight from the buffer as one multi-sector transfer).
+  const size_t whole = (len_ < kMaxWrite ? len_ : kMaxWrite) / kSector * kSector;
+  if (whole > 0) {
+    if (!writeOut(whole)) failSd();
     return;
   }
 
+  // Nothing whole to write: commit the file size/directory entry once per kSdFlushMs. The
+  // remainder (< one sector, under 2 rows) stays in RAM to keep the alignment.
   if (millis() - lastFlushMs_ >= params::kSdFlushMs) {
     lastFlushMs_ = millis();
-    if (!writeOut(len_)) {
-      failSd();
-      return;
-    }
     file_.flush();
   }
 }

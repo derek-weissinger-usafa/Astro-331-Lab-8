@@ -142,7 +142,7 @@ What changed (`src/imu_bno085.cpp`, `src/main.cpp`, `src/data_logger.cpp`):
   reports the hold time. Prelim deck: new slide 14 "Data: DEMO SPIN After Balancing" (`Reports/figures/fig6_demo2_balanced.png`).
 
 ### 2.11 DEMO LEVEL tests after the roll trim — `test_runs/DEMO_LEVEL_analysis.html`
-- `test_runs/DEMO_0003.CSV` (saved on the SD card as DEMO_0002): five `DEMO LEVEL` runs. All reached level
+- `test_runs/DEMO_0003_OLD.CSV` (saved on the SD card as DEMO_0002; renamed 2026-10-31): five `DEMO LEVEL` runs. All reached level
   (±1° for 3 s) 5–6 s after the command and held steadily (roll/pitch σ ≤ 0.07°, heading within 0.5°) for
   2.0, 5.4, 7.0, 6.9 and **15.8 s** (20.8 s armed) before wheel B hit 55 rad/s.
 - Leftover gravity torque fell from ≈ 8 mN·m (roll) to 1.3–3.3 mN·m (now pitch), so the pitch wheel (B) saturates.
@@ -213,6 +213,71 @@ What changed (`src/imu_bno085.cpp`, `src/main.cpp`, `src/data_logger.cpp`):
   runs. SLEW TEST re-simulated with the same model: balanced 4/4 PASS (≤ 0.08°); today's table with ±10° targets
   stops at the wheel limit 4.9 s in; yaw-only targets at the rest tilt pass 4/4.
   Deliverable: `Reports/Slew_and_Fault_Simulation.html`.
+
+### 2.15 MAG TEST, fixed table, all four wheels (2026-10-30) — `test_runs/MAGTEST_0001_report.html`
+- Run over the XBee: ~10 min warm-up, `CALIBRATE 180`, `MAG TEST` (37 graded steps, 57 min: stopped, 14 wheel direction
+  patterns at 100–300 rpm, three ±10° estimate kicks, 30 min drift run). Log `test_runs/MAGTEST_0001.CSV`.
+- **On board: 36/37 PASS.** Every step stayed within ±1° except step 36 (drift run, all wheels 300 rpm, pattern ++--): 1.02°.
+  Kicks pulled back in 73–84 s. Aid in use 78–100% of each step (92% overall). Drift run: max 1.02°, trend −0.40 °/h.
+- **Without the aid** (same log replayed on the PC with `MAG OFF`): yaw drifts **5.7 °/h** even after the warm-up and the
+  180 s calibration, so it would leave ±1° after ~12 min.
+- **Cause of the miss (log replay, `tools/replay`):** each new direction pattern's reference was learned at the yaw error
+  of that moment, so errors random-walk from pattern to pattern (step 36 went in at −0.6°; its pattern was learned at
+  200 rpm, and at 300 rpm the field sat a further +0.43° off). Replaying the same log with **predicted** references
+  (each new pattern's reference from a known one via the MAGMAP_0003 wheel model, fitted on a different run) passes
+  **37/37, worst 0.77°**, 0.25° rms vs 0.33°. Also tried and rejected: gating above 250 rpm (gyro gaps let drift in, 1.29°),
+  slower correction σ 0.5 (13 fails, slow kick recovery), no stopped re-learn (no gain). σ 0.2 with prediction: 37/37,
+  worst 0.67°, kicks back in 45–51 s — tuned on this same log, so try it on the table with `SET MAG_SIGMA 0.2`.
+- **Firmware change:** prediction is now the default (`kMagPredictNewPatterns`, `mag_aid.h`); uploaded 2026-10-31, not yet run on the table.
+- **Data loss:** 1,529 SD rows lost, all within one 4-min window (10–15 min in, steps 10–13) in short gaps ≤ 17 rows /
+  249 ms: SD-card write stalls overflowing the 32 KB buffer; estimation on board was unaffected. 354 IMU samples missed
+  (0.1%, steady ~30 per 5 min): the known BNO085 behaviour (STATIC_0009: 0.085%).
+- The replay reproduces the logged yaw to 0.047° rms (0.18° max) over the whole run, aid included.
+
+### 2.16 MAG TEST rerun with predicted references (2026-10-31) — `test_runs/MAGTEST_0002_report.html`
+- Firmware with prediction as the default; ~3 min after power-on (board warm from the upload), `CALIBRATE 180`
+  (z bias −0.0333 °/s), `MAG TEST`. **Stopped at step 15: 10/15 PASS**: steps 8, 9, 11, 12, 15 at 1.02–1.21°, all on or
+  right after first visits to new wheel patterns (−−−−, +−−−, −−++).
+- **Prediction failed this time.** Per pattern, the wheel-corrected field sat up to **+1.24° (−−−−) and +1.07° (+−−−)** off
+  the ++++ reference (run 1: −0.1…+0.4°), growing with the number of reversed wheels: the reversal model moved ~1° between
+  sessions. The raw field strength also differed (71.1 µT in run 1, 64.7 µT now; MAGMAP_0003 64.0): the magnetic
+  surroundings changed between the runs (something magnetised near the IMU, or the table placed/turned differently).
+- **Replays of both logs** (learned / predicted, worst outside kicks): run 1 1.02° / 0.77°, run 2 0.78° / 1.49°. Blends of
+  the two, faster correction (σ 0.2) and no stopped re-learn were all inconsistent across the two runs (worst 0.8–1.3°).
+  Each new pattern's reference carries 0.3–1.2° of error either way: that is the floor of this magnetometer placement.
+- **Firmware:** back to learning new patterns in place (`kMagPredictNewPatterns = false`; prediction only when the aid is
+  stale). Heading holds change pattern only once or twice (wheel-bias planner), where learning's random walk barely
+  starts. **SD logger:** rows were again lost in a 5–6 min burst (2,398 rows, 7–13 min into the file). The logger now writes
+  whole, sector-aligned blocks of up to 8 KB (it wrote one 512 B sector per call, and the 1 s flush left the file
+  misaligned) and the RAM buffer is 96 KB (was 32 KB). Uploaded 2026-10-31, not yet tested on a long log.
+- Moving the magnetometer away from the wheels (fields fall as 1/r³) would lower that floor, but the team can't change the
+  IMU mounting, so it stays a fixed limit: keep pattern changes few during holds.
+- **Final presentation not yet updated for this run** (deferred): it still shows the run-1 prediction replay as the
+  current firmware (TODO.md).
+
+### 2.17 DEMO LEVEL heading holds on the air bearing, aid on vs off (2026-10-31) — `test_runs/DEMO_0003.CSV`
+(The 2026-10-21 DEMO LEVEL log that used this name is now `DEMO_0003_OLD.CSV`.) ~10 min warm-up, `CALIBRATE 180` on the
+stand (z bias −0.0379 °/s), table floated, then two holds over the XBee; wheel bias on (100 rpm, `null_bias.h`).
+- **Test 1, aid on (214 s):** settled at the rest tilt in 6.3 s (roll 0.89°, pitch −2.77°). Yaw estimate held ±0.2°
+  (controller error 0.02° rms). The aid was in use 94% of the time (one +−+− reference learned, gated 1%), field residual
+  +0.20° mean / 0.32° rms. Wheels ≤ 34 rad/s, no pattern changes.
+- **Test 2, aid off (189 s):** settled in 6.1 s; estimate held, controller error 0.07° rms (0.65° max during the planner
+  switching below). Wheels up to 46 rad/s.
+- **Truth:** no laser yet; the heading marks showed the heading held by eye. An independent magnetometer heading
+  (tilt-compensated, wheel-corrected, gyro-free) moved −0.3…−0.45° over test 1 and ≤ 0.16° over the first 95 s of test 2
+  (−0.5° after the pattern change): heading held within ~0.5°, limited by the field's speed dependence as the wheels
+  filled. Too short to separate aid on from off; that needs long holds and the laser.
+- **Bias:** while the table turned freely before test 1 (~100° of yaw) the aid moved the z bias −0.0379 → −0.0419 °/s
+  (uncorrected hard iron). Test 2's flat start says the aid's value was close to right: the stand calibration was off.
+- **Wheel-bias planner chatter (fixed, uploaded):** in test 2, when wheel B reached the 45 rad/s peak budget at 112 s,
+  the planner changed pattern (by design, to cut the peak 45 → 30 rad/s) and then flipped between two patterns 15 times in
+  6 s: all candidates had ~7.6 rad/s clearance (a near tie), and a wheel stuck near 0 by static friction during each change
+  moved the decision. Fix (`null_bias.h`): decide on 0.5 s low-passed speeds, treat clearances within 1 rad/s as equal,
+  and hold each change ≥ 5 s (uploaded 2026-10-31). Replaying test 2's wheel speeds through it: 1 change; motor-level simulation unchanged
+  (hold 370 s vs 347 s without bias, 2 changes, 0.1° yaw error, fault test still passes).
+- **SD logger fix:** 0 rows lost over 9 min / 17 MB (earlier losses began 7–13 min in, so a longer log is still needed).
+  IMU: 168 samples missed (0.3%), and one chip reset while the table was being floated: strain-relieve the STEMMA/INT/RST
+  wiring.
 
 ## 3. Open issues (details and owners in `TODO.md`)
 - **Wheel D's encoder connection is intermittent** (reseated twice 2026-10-30): solder/crimp + strain relief.

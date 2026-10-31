@@ -45,6 +45,12 @@ constexpr float kEncFaultMaxAccelRadS2 = 3000.0f;
 constexpr float kWheelCmdLeadRadS = 13.0f;    // setpoint may lead measured speed by at most this
 constexpr float kNullBiasRadS = 0.0f;        // 4-wheel null-mode speed target (0 = just hold it)
 constexpr float kNullGain = 5.0f;             // 1/s
+// Heading holds (ARM, DEMO LEVEL, all four wheels): the null mode keeps every wheel at least this
+// far from zero (null_bias.h) so the magnetometer aid can stay in use. BIAS <rpm> changes it, 0 = off.
+constexpr float kHoldWheelMinRadS = 10.47f;  // 100 rpm (also clear of the ~50 rpm resonance)
+// ...but the bias never drives a wheel above this (under kDemoWheelAbortRadS), so it can't end a
+// hold early: with roll/pitch momentum stored (pendulous table) full clearance would cost peak speed.
+constexpr float kHoldBiasMaxPeakRadS = 45.0f;
 
 // Per-wheel signs, found during bring-up (see CLAUDE.md). +1 = as wired.
 //  Positive wheel speed is a right-hand rotation about the wheel axis in wheel_geometry.h.
@@ -99,6 +105,28 @@ constexpr float kStaticTestWheelRpm = 100.0f;
 // ---- Magnetometer disturbance map ("MAG MAP", schedule in mag_map.h) ----
 constexpr uint32_t kMagMapStepMs = 20000;  // hold per step (ramp ~1-2 s + settled average)
 
+// ---- IMU mounting (LEVEL ZERO) ----
+// Roll/pitch the IMU reads when the DECK is level (spirit level, table clamped): every IMU sample
+// is rotated by this into the table frame, so the reported attitude (requirement 2) is the
+// table's, not the IMU board's. 0 = IMU assumed level on its mount (not measured yet).
+constexpr float kImuMountRollDeg = 0.0f;
+constexpr float kImuMountPitchDeg = 0.0f;
+constexpr float kLevelZeroS = 5.0f;  // LEVEL ZERO averaging time
+
+// ---- Heading step responses on the air bearing ("STEP TEST", step_test.h) ----
+constexpr float kStepDefaultDeg = 5.0f;
+constexpr float kStepMaxDeg = 30.0f;
+constexpr float kStepHoldS = 20.0f;      // each segment (baseline and every step)
+constexpr float kStepTailS = 5.0f;       // steady-state error / jitter window at the end of each
+constexpr float kStepBandMinDeg = 0.2f;  // settling band: max(10% of the step, this)
+constexpr float kStepIdS = 6.0f;         // inertia fit window after each step (covers the move)
+
+// ---- Yaw-aid validation on the fixed table ("MAG TEST", schedule in mag_test.h) ----
+constexpr float kMagTestTolDeg = 1.0f;       // |yaw| limit (the table is fixed, so true yaw = 0)
+constexpr float kMagTestRecoverS = 90.0f;    // KICK steps: back within the limit this soon (tau ~25 s)
+constexpr float kMagTestDriftMin = 30.0f;    // default drift-run length (MAG TEST [min] overrides)
+constexpr float kMagTestDriftMaxMin = 240.0f;
+
 // ---- Magnetometer heading aid (mag_aid.h; calibrated 2026-10-27) ----
 constexpr float kMagLpfTauS = 0.5f;         // low-pass on the corrected field (motor noise is 3-50 Hz)
 constexpr float kMagStillRadS = 0.05f;      // all enabled wheels below this (and counts fixed) = Stopped
@@ -111,6 +139,12 @@ constexpr float kMagSpeedLpfTauS = 0.3f;
 // startup calibration just ended), so it doesn't inherit drifted yaw. Gyro drift <= ~25 deg/h
 // => <= 0.2 deg in 30 s.
 constexpr float kMagLearnMaxGapS = 30.0f;
+// New spinning direction patterns: learn the reference in place (false) or always predict it from
+// a known one (true). Prediction is still used when the aid is stale. Two fixed-table runs disagree
+// (mag_aid.h): MAGTEST_0001 learned 36/37 (1.02 deg) vs predicted 37/37 (0.77); MAGTEST_0002
+// learned 15/15 (0.78) vs predicted, as run, 10/15 (1.49): the reversal model moved ~1 deg between
+// sessions. Holds switch pattern only once or twice (null_bias.h), which favours learning.
+constexpr bool kMagPredictNewPatterns = false;
 constexpr float kMagRefSpeedRadS = 10.47f;  // speed model reference (100 rpm)
 constexpr float kMagSettleStillS = 1.5f;    // after the wheels stop / start before the field is used
 constexpr float kMagSettleSpinS = 2.0f;
@@ -121,6 +155,9 @@ constexpr float kMagHorizTolFrac = 0.15f;   // gate if the horizontal field stre
 // Heading noise fed to the EKF per sample (100 Hz). Deliberately large: the low-passed samples are
 // strongly correlated, and the aid should only remove slow gyro drift (~30 s time constant).
 constexpr float kMagHeadingSigmaRad = 0.3f;
+// Table hard iron (body frame, uT), removed before the field is used. Not fitted yet: needs a yaw
+// turn on the air bearing (tools/hardiron_fit.py); SET MAG_HX/HY/HZ tries a value without an upload.
+constexpr float kMagHardIronUt[3] = {0.0f, 0.0f, 0.0f};
 
 // ---- IMU sample-loss diagnostics ----
 constexpr float kImuGapMs = 15.0f;  // gyro interval above this (nominal 10 ms) counts as a gap
@@ -152,7 +189,7 @@ constexpr float kDemoLevelMinS = 2.0f;         // shortest levelling slew
 constexpr float kDemoLevelTolDeg = 1.0f;       // "level" = |roll|,|pitch| below this ...
 constexpr float kDemoLevelHoldS = 3.0f;        // ... continuously for this long
 // DEMO LEVEL holds the table's natural rest tilt (where gravity balances it), not exact level
-// (DEMO_0003: holding exact level cost 1.3-3.3 mN m and filled a wheel in ~15 s). Roll/pitch are
+// (DEMO_0003_OLD: holding exact level cost 1.3-3.3 mN m and filled a wheel in ~15 s). Roll/pitch are
 // only damped; the rest tilt is reported as a low-pass of the measured tilt with this time constant.
 constexpr float kDemoRestAvgS = 2.0f;
 constexpr float kDemoRestTolDeg = 0.25f;       // "settled": |tilt - rest average| below this for kDemoLevelHoldS

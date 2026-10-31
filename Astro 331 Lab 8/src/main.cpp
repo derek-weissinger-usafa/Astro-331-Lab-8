@@ -7,10 +7,14 @@
 #include "data_logger.h"
 #include "demo_spin.h"
 #include "slew_test.h"
+#include "step_test.h"
 #include "frames.h"
 #include "imu_bno085.h"
 #include "mag_aid.h"
 #include "mag_map.h"
+#include "mag_test.h"
+#include "null_bias.h"
+#include "tune.h"
 #include "pins.h"
 #include "wheel_fault.h"
 #include "wheel_geometry.h"
@@ -36,6 +40,10 @@ static DataLogger logger(XBEE_SERIAL);
 static DemoSpin demo;
 static SlewTest slew;
 static MagAid magAid;  // magnetometer heading aid (mag_aid.h)
+static MagTest magTest;  // MAG TEST: fixed-table validation of the aid (mag_test.h)
+static StepTest stepTest;  // STEP TEST: heading steps on top of DEMO LEVEL (step_test.h)
+// Heading holds: null-mode bias keeping every wheel >= tune::holdMinRadS from zero (null_bias.h).
+static NullBias holdBias;
 static uint32_t lastMagUs = 0;
 static bool haveLastMag = false;
 static MagResult lastMagResult = MagResult::Gated;
@@ -113,6 +121,32 @@ static uint32_t logLastRawUs = 0;
 static bool logClockStarted = false;
 static AccelResult lastAccelResult = AccelResult::Applied;
 
+// IMU mounting (tune::imuRoll0Deg / imuPitch0Deg, LEVEL ZERO): every sample is rotated by
+// mountT = A(q_mount)^T from the IMU frame into the table frame. Rebuilt when SET changes them.
+static Mat<3, 3> mountT;
+static bool mountOn = false;
+static uint32_t mountVersion = 0xFFFFFFFF;
+// LEVEL ZERO: averaging the raw accelerometer (deck level) for kLevelZeroS, then CALIBRATE.
+static bool levelZeroActive = false;
+static uint32_t levelZeroStartMs = 0, levelZeroN = 0;
+static double levelZeroSum[3];
+
+static void updateMount() {
+  if (mountVersion == tune::version()) return;
+  mountVersion = tune::version();
+  mountOn = tune::imuRoll0Deg != 0.0f || tune::imuPitch0Deg != 0.0f;
+  const Mat<3, 3> A = qToMatrix(qFromEuler321(tune::imuRoll0Deg * kDegToRad, tune::imuPitch0Deg * kDegToRad, 0.0f));
+  for (int r = 0; r < 3; r++)
+    for (int c = 0; c < 3; c++) mountT(r, c) = A(c, r);
+}
+
+static Vec3 toTable(const Vec3& v) {
+  if (!mountOn) return v;
+  return {mountT(0, 0) * v.x + mountT(0, 1) * v.y + mountT(0, 2) * v.z,
+          mountT(1, 0) * v.x + mountT(1, 1) * v.y + mountT(1, 2) * v.z,
+          mountT(2, 0) * v.x + mountT(2, 1) * v.y + mountT(2, 2) * v.z};
+}
+
 // Latest raw sensor values, for the data log (updated in every state).
 static Vec3 latestGyro{0, 0, 0}, latestAccel{0, 0, 0}, latestMag{0, 0, 0};
 
@@ -141,7 +175,18 @@ static void disarm(const char* reason) {
   slew.abort();
   magStep = -1;
   if (state == State::Armed || state == State::Manual) state = State::Idle;
-  char msg[48];
+  char msg[96];
+  if (magTest.active()) {
+    snprintf(msg, sizeof(msg), "# MAGTEST STOPPED at step %d/%d: %d/%d PASS so far\n", magTest.index() + 1,
+             magTest.total(), magTest.passCount(), magTest.doneCount());
+    sayAll(msg);
+    magTest.abort();
+  }
+  if (stepTest.active()) {
+    snprintf(msg, sizeof(msg), "# STEP TEST STOPPED in segment %d/%d\n", stepTest.index(), StepTest::kSteps);
+    sayAll(msg);
+    stepTest.abort();
+  }
   snprintf(msg, sizeof(msg), "# DISARM %s\n", reason);
   sayAll(msg);
   if (fault.active()) {
@@ -266,6 +311,7 @@ static void arm(CommandLink& from) {
   }
   ctrl.reset();
   ctrl.setReference({1.0f, 0.0f, 0.0f, 0.0f});  // level, yaw 0
+  holdBias.reset();
   for (int i = 0; i < kN; i++) {
     speedLoops[i].reset();
     wheelCmd[i] = wheels[i].speed();
@@ -295,7 +341,7 @@ static float demoTargetRate() {
   }
   // The null-mode wheel bias (all four wheels only) uses part of each wheel's speed range.
   const float usable = params::kWheelMaxSpeedRadS - (all ? params::kDemoWheelBiasRadS : 0.0f);
-  const float cap = params::kDemoMomentumMargin * az * params::kWheelInertia * usable / params::kBodyInertia[2];
+  const float cap = params::kDemoMomentumMargin * az * params::kWheelInertia * usable / tune::inertia[2];
   return cap < params::kDemoRequestedRateRadS ? cap : params::kDemoRequestedRateRadS;
 }
 
@@ -330,6 +376,7 @@ static void startDemo(CommandLink& from, bool levelOnly) {
 
   const float rate = demoTargetRate();
   ctrl.reset();
+  holdBias.reset();
   demo.start(ekf.quaternion(), rate, levelOnly);
   ctrl.setTrajectory(demo.ref().q, demo.ref().w, demo.ref().a);
   for (int i = 0; i < kN; i++) {
@@ -475,6 +522,99 @@ static void stopDemo(CommandLink& from) {
   }
 }
 
+// ---- STEP TEST: heading steps on top of DEMO LEVEL (step_test.h) ----
+static void startStepTest(const Command& c, CommandLink& from) {
+  float amp = c.hasValue ? c.value : params::kStepDefaultDeg;
+  if (amp > params::kStepMaxDeg) amp = params::kStepMaxDeg;
+  if (amp < -params::kStepMaxDeg) amp = -params::kStepMaxDeg;
+  if (amp == 0.0f) amp = params::kStepDefaultDeg;
+  startDemo(from, true);  // refuses (and says why) unless Idle, tilt ok, wheels stopped
+  if (!demo.active()) return;
+  stepTest.start(amp);
+  char msg[128];
+  snprintf(msg, sizeof(msg),
+           "# STEP TEST: once settled, heading +%.1f, 0, -%.1f, 0 deg, %.0f s each (bw %.2f rad/s, zeta %.2f, Izz %.4f)\n",
+           amp, amp, params::kStepHoldS, tune::attBw, tune::attZeta, tune::inertia[2]);
+  sayAll(msg);
+}
+
+// Per control step once DEMO LEVEL has settled. Returns false if it disarmed.
+static bool stepStepTest(float dt, float yawRad) {
+  float rel = yawRad - demo.startYaw();
+  while (rel > 3.14159265f) rel -= 6.2831853f;
+  while (rel < -3.14159265f) rel += 6.2831853f;
+  const Vec3 omega = ekf.bodyRate();
+  const StepTest::Event ev = stepTest.update(dt, rel * kRadToDeg, omega.z, wheelMomentum(omega).z);
+  if (ev == StepTest::Event::None) return true;
+  const StepTest::Result& r = stepTest.lastResult();
+  char msg[176];
+  if (ev == StepTest::Event::BaselineDone) {
+    snprintf(msg, sizeof(msg), "# STEP baseline: heading error %+.3f deg, jitter %.3f deg rms\n", r.errDeg, r.jitterDeg);
+  } else {
+    char rise[12] = "n/a", settle[12] = "n/a";
+    if (r.riseS >= 0.0f) snprintf(rise, sizeof(rise), "%.2f s", r.riseS);
+    if (r.settleS >= 0.0f) snprintf(settle, sizeof(settle), "%.2f s", r.settleS);
+    snprintf(msg, sizeof(msg),
+             "# STEP %+.1f deg: rise %s, overshoot %.0f%%, settle %s, error %+.3f deg, jitter %.3f deg rms, Izz %.4f, "
+             "yaw drag %.3f mN m\n",
+             r.targetDeg, rise, r.overshootPct, settle, r.errDeg, r.jitterDeg, r.izz, r.dragMNm);
+  }
+  sayAll(msg);
+  if (ev == StepTest::Event::Complete) {
+    snprintf(msg, sizeof(msg), "# STEP TEST COMPLETE: measured Izz %.4f kg m^2 (model %.4f; SET IZZ to use it)\n",
+             stepTest.meanIzz(), tune::inertia[2]);
+    sayAll(msg);
+    disarm("STEP_TEST_COMPLETE");
+    return false;
+  }
+  return true;
+}
+
+static void startCalibration(const Command& c, CommandLink& from);
+
+// LEVEL ZERO (Idle, deck level by a spirit level, table clamped): measure how the IMU sits on its
+// mount, then recalibrate in the corrected frame.
+static void startLevelZero(CommandLink& from) {
+  if (state != State::Idle || levelZeroActive) {
+    from.send("# LEVEL ZERO REFUSED: not idle\n");
+    return;
+  }
+  levelZeroActive = true;
+  levelZeroStartMs = millis();
+  levelZeroN = 0;
+  levelZeroSum[0] = levelZeroSum[1] = levelZeroSum[2] = 0.0;
+  char msg[96];
+  snprintf(msg, sizeof(msg), "# LEVEL ZERO: deck must be LEVEL and still; measuring %.0f s\n", params::kLevelZeroS);
+  sayAll(msg);
+}
+
+static void updateLevelZero(CommandLink& link) {
+  if (!levelZeroActive || millis() - levelZeroStartMs < (uint32_t)(params::kLevelZeroS * 1000.0f)) return;
+  levelZeroActive = false;
+  if (levelZeroN < 100 || state != State::Idle) {
+    sayAll("# LEVEL ZERO FAILED: too few samples or not idle\n");
+    return;
+  }
+  const Vec3 a{(float)(levelZeroSum[0] / levelZeroN), (float)(levelZeroSum[1] / levelZeroN),
+               (float)(levelZeroSum[2] / levelZeroN)};
+  const float n = norm(a);
+  const Vec3 u = a * (1.0f / n);  // "up" in the IMU frame with the deck level
+  // Same construction as AttitudeEKF::initialize: shortest arc from ez to u, yaw removed.
+  Quat q = qnormalize({1.0f + u.z, -u.y, u.x, 0.0f});
+  q = qnormalize(qmul(q, qFromRotVec({0.0f, 0.0f, qToEuler321(q).z})));
+  const Vec3 e = qToEuler321(q) * kRadToDeg;
+  tune::set("IMU_ROLL0", e.x);
+  tune::set("IMU_PITCH0", e.y);
+  char msg[200];
+  snprintf(msg, sizeof(msg),
+           "# LEVEL ZERO: IMU sits at roll %+.3f pitch %+.3f deg on the level deck (|a| %.3f m/s^2); applied - put "
+           "kImuMountRollDeg/PitchDeg in control_params.h to keep it\n",
+           e.x, e.y, n);
+  sayAll(msg);
+  Command c;
+  startCalibration(c, link);  // the filter state is in the old frame: recalibrate (keep still)
+}
+
 static void resetCalibration() {
   calStartMs = calProgressMs = millis();
   calGyroN = calAccelN = 0;
@@ -567,6 +707,7 @@ static void logData(uint32_t sampleUs) {
   for (int i = 0; i < kN; i++) {
     r.rpm[i] = wheels[i].speed() * kRadSToRpm;
     r.duty[i] = wheels[i].axisDuty();
+    r.enc[i] = wheels[i].count();
   }
   r.q = ekf.quaternion();
   r.eulerDeg = ekf.eulerRad() * kRadToDeg;
@@ -576,7 +717,7 @@ static void logData(uint32_t sampleUs) {
   r.state = stateChar();
   r.gyroSeq = lastGyroSeq;
   r.seqMissed = seqMissed;
-  r.testStep = magStep;
+  r.testStep = magTest.active() ? magTest.index() : stepTest.active() ? stepTest.index() : magStep;
   r.magMode = magAid.modeChar();
   r.magResidDeg = magAid.headingResidualDeg();
   if (demo.active()) {
@@ -654,6 +795,126 @@ static void updateMagMap() {
   applyMagStep();
 }
 
+// ---- MAG TEST: fixed-table validation of the yaw aid (mag_test.h), Manual mode ----
+static void applyMagTestStep() {
+  constexpr float kRpmToRadS = 6.2831853f / 60.0f;
+  const mag_test::Step& s = magTest.step();
+  char pat[kN + 1];
+  for (int i = 0; i < kN; i++) {
+    manualTarget[i] = s.rpm[i] * kRpmToRadS;
+    pat[i] = s.rpm[i] > 0 ? '+' : s.rpm[i] < 0 ? '-' : '0';
+  }
+  pat[kN] = '\0';
+  char msg[112];
+  snprintf(msg, sizeof(msg), "# MAGTEST %d/%d%s %s A=%d B=%d C=%d D=%d rpm %u s\n", magTest.index() + 1,
+           magTest.total(), magTest.inDrift() ? " drift" : "", pat, s.rpm[0], s.rpm[1], s.rpm[2], s.rpm[3],
+           (unsigned)s.s);
+  sayAll(msg);
+  if (s.kickDeg != 0) {
+    ekf.perturbYaw(s.kickDeg * kDegToRad);
+    snprintf(msg, sizeof(msg), "# MAGTEST KICK yaw estimate %+d deg (recover within %.0f s)\n", s.kickDeg,
+             params::kMagTestRecoverS);
+    sayAll(msg);
+  }
+}
+
+static void reportMagTestStep() {
+  const MagTest::Result& r = magTest.lastResult();
+  char ws[kN + 1];
+  wheelStatus(ws);
+  char msg[160];
+  if (r.kick) {
+    snprintf(msg, sizeof(msg),
+             "# MAGTEST %d/%d %s: kick recovered in %.0f s (peak %.1f), then max|yaw| %.2f, end %+.2f deg, aid %.0f%%, "
+             "resid %.2f rms, wheels %s\n",
+             magTest.doneCount(), magTest.total(), r.pass ? "PASS" : "FAIL", r.recoverS, r.peakDeg, r.maxAbsDeg,
+             r.endDeg, r.aidFrac * 100.0f, r.residRmsDeg, ws);
+  } else {
+    snprintf(msg, sizeof(msg), "# MAGTEST %d/%d %s: max|yaw| %.2f, end %+.2f deg, aid %.0f%%, resid %.2f rms, wheels %s\n",
+             magTest.doneCount(), magTest.total(), r.pass ? "PASS" : "FAIL", r.maxAbsDeg, r.endDeg,
+             r.aidFrac * 100.0f, r.residRmsDeg, ws);
+  }
+  sayAll(msg);
+}
+
+static void startMagTest(const Command& c, CommandLink& from) {
+  if (state != State::Idle) {
+    from.send("# MAGTEST REFUSED: not idle (wait for calibration / DISARM first)\n");
+    return;
+  }
+  if (!magAid.enabled()) {
+    from.send("# MAGTEST REFUSED: mag aid is off (MAG ON first)\n");
+    return;
+  }
+  for (int i = 0; i < kN; i++) {
+    if (fabsf(wheels[i].speed()) > params::kDemoStartMaxWheelRadS) {
+      from.send("# MAGTEST REFUSED: wheels still turning\n");
+      return;
+    }
+  }
+  float minutes = c.hasValue ? c.value : params::kMagTestDriftMin;
+  if (minutes < 0.0f) minutes = 0.0f;
+  if (minutes > params::kMagTestDriftMaxMin) minutes = params::kMagTestDriftMaxMin;
+  const int driftSteps = (int)ceilf(minutes * 60.0f / mag_test::kDriftStepS);
+  if (!logger.sdActive()) logger.startFile("MAGTEST");
+  testWheel = -1;
+  for (int i = 0; i < kN; i++) {
+    speedLoops[i].reset();
+    wheelCmd[i] = manualTarget[i] = 0.0f;
+  }
+  state = State::Manual;
+  magTest.start(driftSteps);
+  float totalS = driftSteps * mag_test::kDriftStepS;
+  for (int i = 0; i < mag_test::kNumMain; i++) totalS += mag_test::kMain[i].s;
+  char ws[kN + 1];
+  wheelStatus(ws);
+  char msg[160];
+  snprintf(msg, sizeof(msg),
+           "# MAGTEST START: %d steps (%d drift), ~%.0f min, |yaw| <= %.1f deg, table must be FIXED, wheels %s, "
+           "aid %c%s%s\n",
+           magTest.total(), driftSteps, totalS / 60.0f, params::kMagTestTolDeg, ws, magAid.modeChar(),
+           logger.sdActive() ? ", log " : ", NO SD LOG", logger.sdActive() ? logger.fileName() : "");
+  sayAll(msg);
+  if (strcmp(ws, "....") != 0) sayAll("# MAGTEST WARNING: not all 4 wheels in service\n");
+  if (magAid.modeChar() == 'x') sayAll("# MAGTEST WARNING: aid is stale (no reference) - CALIBRATE first\n");
+  applyMagTestStep();
+}
+
+// Per gyro sample while the test runs: grade, then advance the schedule.
+static void stepMagTest(float dt) {
+  if (!magTest.active()) return;
+  if (state != State::Manual) {  // overspeed or another command left Manual mode
+    magTest.abort();
+    sayAll("# MAGTEST ABORTED: left Manual mode\n");
+    return;
+  }
+  const MagAid::Mode m = magAid.mode();
+  const bool inUse = m == MagAid::Mode::Stopped || m == MagAid::Mode::Spinning;
+  switch (magTest.update(dt, ekf.eulerRad().z * kRadToDeg, inUse, magAid.headingResidualDeg())) {
+    case MagTest::Event::StepDone:
+      reportMagTestStep();
+      applyMagTestStep();
+      break;
+    case MagTest::Event::Complete: {
+      reportMagTestStep();
+      char msg[160];
+      if (magTest.driftMinutes() > 0.0f) {
+        snprintf(msg, sizeof(msg), "# MAGTEST DRIFT %.0f min: max|yaw| %.2f deg, trend %+.2f deg/h, aid %.0f%%\n",
+                 magTest.driftMinutes(), magTest.driftMaxAbsDeg(), magTest.driftTrendDegPerH(),
+                 magTest.driftAidFrac() * 100.0f);
+        sayAll(msg);
+      }
+      snprintf(msg, sizeof(msg), "# MAGTEST COMPLETE: %d/%d steps PASS -> %s\n", magTest.passCount(),
+               magTest.doneCount(), magTest.passCount() == magTest.doneCount() ? "PASS" : "FAIL");
+      sayAll(msg);
+      disarm("MAGTEST_COMPLETE");  // wheels stop; SD logging continues until power off
+      break;
+    }
+    default:
+      break;
+  }
+}
+
 static bool setManualSpeed(int wheel, float rpm, CommandLink& from) {
   if (state != State::Idle && state != State::Manual) {
     from.send("# SPEED REFUSED: not idle/manual\n");
@@ -697,11 +958,11 @@ static void handleCommand(const Command& c, CommandLink& from) {
       const Vec3 s = ekf.sigmaRad() * kRadToDeg;
       char ws[kN + 1];
       wheelStatus(ws);
-      char msg[320];
+      char msg[384];
       snprintf(msg, sizeof(msg),
                "S,%c,%.1f,%.1f,%.1f,sig_yaw=%.2f,%.0f,%.0f,%.0f,%.0f,sd=%s,drop=%lu,demo=%c,"
                "miss=%lu,chipgap=%lu,maxgap=%.0f,lat=%.2f,int=%lu,svc=%lu/%lu,ev=%lu,rst=%lu,en=%lu/%d,intpin=%d,"
-               "wheels=%c%c%c%c,mag=%c,mres=%.2f,bz=%.5f,wst=%s,fault=%c\n",
+               "wheels=%c%c%c%c,mag=%c,mres=%.2f,bz=%.5f,wst=%s,fault=%c,mt=%d,hb=%.0f/%d,mpred=%d\n",
                stateChar(), e.x, e.y, e.z, s.z, wheels[0].speed(), wheels[1].speed(), wheels[2].speed(),
                wheels[3].speed(), logger.sdActive() ? logger.fileName() : "off",
                (unsigned long)logger.droppedRows(), slew.active() ? slew.phaseChar() : demo.phaseChar(), (unsigned long)seqMissed,
@@ -712,7 +973,8 @@ static void handleCommand(const Command& c, CommandLink& from) {
                (unsigned long)imu.enableCount(), imu.lastEnableOk() ? 1 : 0,
                kPinImuInt >= 0 ? digitalRead(kPinImuInt) : -1, wheelEnabled[0] ? 'A' : '-',
                wheelEnabled[1] ? 'B' : '-', wheelEnabled[2] ? 'C' : '-', wheelEnabled[3] ? 'D' : '-', magAid.modeChar(),
-               magAid.headingResidualDeg(), ekf.gyroBias().z * kRadToDeg, ws, fault.phaseChar());
+               magAid.headingResidualDeg(), ekf.gyroBias().z * kRadToDeg, ws, fault.phaseChar(), magTest.index() + 1,
+               tune::holdMinRadS * 60.0f / 6.2831853f, holdBias.switches(), magAid.predictedCount());
       from.send(msg);
       break;
     }
@@ -756,12 +1018,23 @@ static void handleCommand(const Command& c, CommandLink& from) {
         disarm(slew.done() ? "SLEW_TEST_DONE" : "SLEW_STOPPED");
       } else if (magStep >= 0) {
         disarm("MAGMAP_STOPPED");
+      } else if (magTest.active()) {
+        disarm("MAGTEST_STOPPED");
       } else {
         stopDemo(from);
       }
       break;
     case Cmd::MagMap:
       startMagMap(from);
+      break;
+    case Cmd::MagTest:
+      startMagTest(c, from);
+      break;
+    case Cmd::StepTest:
+      startStepTest(c, from);
+      break;
+    case Cmd::LevelZero:
+      startLevelZero(from);
       break;
     case Cmd::Wheel: {
       // WHEEL <A-D> ON|OFF: take a wheel out of (or back into) service. Idle only.
@@ -784,6 +1057,51 @@ static void handleCommand(const Command& c, CommandLink& from) {
       magAid.setEnabled(c.cmd == Cmd::MagAidOn);
       sayAll(magAid.enabled() ? "# MAG AID ON (relearns its references)\n" : "# MAG AID OFF (gyro-only yaw)\n");
       break;
+    case Cmd::Set:
+    case Cmd::Get: {
+      char msg[96];
+      if (c.cmd == Cmd::Set && !tune::set(c.name, c.value)) {
+        snprintf(msg, sizeof(msg), "# SET REFUSED: unknown parameter %s (GET lists them)\n", c.name);
+        from.send(msg);
+        break;
+      }
+      if (c.name[0]) {
+        const tune::Param* p = tune::find(c.name);
+        if (!p) {
+          snprintf(msg, sizeof(msg), "# GET: unknown parameter %s\n", c.name);
+        } else {
+          snprintf(msg, sizeof(msg), "# %s %s = %.6g (%s, range %.4g..%.4g)\n", c.cmd == Cmd::Set ? "SET" : "GET",
+                   p->name, *p->value, p->what, p->lo, p->hi);
+        }
+        sayAll(msg);
+        break;
+      }
+      // GET with no name: all of them, packed (the XBee's TX buffer is ~1 KB, shared with data rows)
+      int len = snprintf(msg, sizeof(msg), "# GET");
+      for (int i = 0; i < tune::count(); i++) {
+        const tune::Param& p = tune::at(i);
+        char item[32];
+        const int n = snprintf(item, sizeof(item), " %s=%.5g", p.name, *p.value);
+        if (len + n + 2 > (int)sizeof(msg)) {
+          strcpy(msg + len, "\n");
+          from.send(msg);
+          len = snprintf(msg, sizeof(msg), "# GET");
+        }
+        strcpy(msg + len, item);
+        len += n;
+      }
+      strcpy(msg + len, "\n");
+      from.send(msg);
+      break;
+    }
+    case Cmd::Bias: {
+      tune::set("HOLD_MIN", c.value > 0.0f ? c.value * 6.2831853f / 60.0f : 0.0f);
+      char msg[96];
+      snprintf(msg, sizeof(msg), "# BIAS heading holds keep wheels >= %.0f rpm from zero%s\n",
+               tune::holdMinRadS * 60.0f / 6.2831853f, tune::holdMinRadS > 0.0f ? "" : " (off)");
+      sayAll(msg);
+      break;
+    }
     case Cmd::Kick: {
       // KICK <deg>: test only - rotate the yaw estimate (not the table) to watch the aid pull it back.
       ekf.perturbYaw(c.value * kDegToRad);
@@ -889,6 +1207,7 @@ static void controlStep(float dt) {
 
   if (demo.active()) {
     const Vec3 e = ekf.eulerRad();
+    if (stepTest.active()) demo.setHeadingOffset(stepTest.offsetRad());
     switch (demo.step(dt, e.x, e.y)) {
       case DemoSpin::Event::Leveled: {
         char msg[112];
@@ -920,6 +1239,7 @@ static void controlStep(float dt) {
       default:
         break;
     }
+    if (stepTest.active() && demo.phase() == DemoPhase::LevelHold && !stepStepTest(dt, e.z)) return;
     // Momentum budget guard: a wheel near its cap means the inertia model is off (or drag).
     float wmax = 0.0f;
     for (int i = 0; i < kN; i++) wmax = fmaxf(wmax, fabsf(wheels[i].speed()));
@@ -954,9 +1274,16 @@ static void controlStep(float dt) {
   // Null mode: hold the [+1,-1,+1,-1] wheel-speed combination at the bias (no body torque).
   // DEMO SPIN keeps the wheels at ~100 rpm so no shaft sits still (magnetometer, mag_map.h).
   float nullBias = demo.active() ? demo.wheelBias() : params::kNullBiasRadS;
-  // FAULT TEST keeps the wheels turning so a dead motor shows up at once (wheel_fault.h).
-  if (fault.wheelBias() > nullBias) nullBias = fault.wheelBias();
-  if (all) addNullSpaceTorque(spd, params::kWheelInertia, params::kNullGain, nullBias, u);
+  // Heading holds (ARM, DEMO LEVEL): keep every wheel away from zero for the magnetometer aid.
+  // That also keeps them turning for FAULT TEST, so it replaces the test's fixed bias.
+  const bool hold = all && tune::holdMinRadS > 0.0f && !slew.active() && (!demo.active() || demo.levelOnly());
+  if (hold) {
+    nullBias = holdBias.update(spd, tune::holdMinRadS, tune::holdMaxPeak, dt);
+  } else if (fault.wheelBias() > nullBias) {
+    // FAULT TEST keeps the wheels turning so a dead motor shows up at once (wheel_fault.h).
+    nullBias = fault.wheelBias();
+  }
+  if (all) addNullSpaceTorque(spd, params::kWheelInertia, tune::nullGain, nullBias, u);
 
   for (int i = 0; i < kN; i++) {
     if (!wheelEnabled[i]) continue;
@@ -1205,7 +1532,15 @@ void loop() {
 
   // Drain everything the IMU has queued, in arrival order.
   ImuSample s;
+  updateMount();
   while (imu.poll(s)) {
+    if (levelZeroActive && s.kind == ImuSample::Accel) {  // raw IMU frame, before the mounting rotation
+      levelZeroSum[0] += s.v.x;
+      levelZeroSum[1] += s.v.y;
+      levelZeroSum[2] += s.v.z;
+      levelZeroN++;
+    }
+    s.v = toTable(s.v);
     if (s.kind == ImuSample::Gyro) {
       latestGyro = s.v;
       trackGyroSequence(s);
@@ -1228,8 +1563,9 @@ void loop() {
         // wheel-state check so its new stopping place can't leave a stale field offset.
         bool magWheels[kN];
         for (int i = 0; i < kN; i++) magWheels[i] = wheelEnabled[i] || wheelDead[i];
+        magAid.setHardIron({tune::magHard[0], tune::magHard[1], tune::magHard[2]});  // no-op unless SET changed it
         if (magAid.update(s.v, cnt, spd, magWheels, ekf.quaternion(), dtMag, mUse, ref))
-          lastMagResult = ekf.updateMagYaw(mUse, ref, params::kMagHeadingSigmaRad);
+          lastMagResult = ekf.updateMagYaw(mUse, ref, tune::magSigma);
       }
       if (usbRaw) printRawRow(s.t_us);
     }
@@ -1253,6 +1589,7 @@ void loop() {
         if (dt > 0.0f && dt <= params::kImuTimeoutMs * 1.0e-3f) {
           ekf.predict(s.v, dt);
           if (state == State::Armed) controlStep(dt);
+          stepMagTest(dt);
         }
       }
       lastGyroUs = s.t_us;
@@ -1273,6 +1610,7 @@ void loop() {
   }
 
   updateMagMap();
+  updateLevelZero(xbee);
   logger.service();  // rows are produced per gyro sample above
 
   if (!usbRaw && state != State::Calibrating && millis() - lastUsbMs >= params::kUsbTelemetryMs) {

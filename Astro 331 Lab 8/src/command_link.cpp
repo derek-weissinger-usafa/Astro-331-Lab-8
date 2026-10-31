@@ -37,10 +37,16 @@ static Command parseLine(char* line) {
     c.cmd = Cmd::Stop;
   } else if (!strcmp(tok, "MAG")) {
     char* a = strtok_r(nullptr, " \t,", &save);
-    c.cmd = (a && !strcmp(a, "MAP"))   ? Cmd::MagMap
-            : (a && !strcmp(a, "ON"))  ? Cmd::MagAidOn
-            : (a && !strcmp(a, "OFF")) ? Cmd::MagAidOff
-                                       : Cmd::Unknown;
+    c.cmd = (a && !strcmp(a, "MAP"))    ? Cmd::MagMap
+            : (a && !strcmp(a, "TEST")) ? Cmd::MagTest
+            : (a && !strcmp(a, "ON"))   ? Cmd::MagAidOn
+            : (a && !strcmp(a, "OFF"))  ? Cmd::MagAidOff
+                                        : Cmd::Unknown;
+    char* v = strtok_r(nullptr, " \t,", &save);
+    if (c.cmd == Cmd::MagTest && v) {
+      c.value = (float)atof(v);
+      c.hasValue = true;
+    }
   } else if (!strcmp(tok, "SLEW")) {
     char* a = strtok_r(nullptr, " \t,", &save);
     if (a && !strcmp(a, "TEST")) {
@@ -83,6 +89,35 @@ static Command parseLine(char* line) {
     } else {
       c.cmd = Cmd::Unknown;
     }
+  } else if (!strcmp(tok, "LEVEL")) {
+    char* a = strtok_r(nullptr, " \t,", &save);
+    c.cmd = (a && !strcmp(a, "ZERO")) ? Cmd::LevelZero : Cmd::Unknown;
+  } else if (!strcmp(tok, "STEP")) {
+    char* a = strtok_r(nullptr, " \t,", &save);
+    char* v = strtok_r(nullptr, " \t,", &save);
+    c.cmd = (a && !strcmp(a, "TEST")) ? Cmd::StepTest : Cmd::Unknown;
+    if (v) {
+      c.value = (float)atof(v);
+      c.hasValue = true;
+    }
+  } else if (!strcmp(tok, "SET") || !strcmp(tok, "GET")) {
+    const bool isSet = tok[0] == 'S';
+    char* n = strtok_r(nullptr, " \t,", &save);
+    char* v = strtok_r(nullptr, " \t,", &save);
+    if (isSet && (!n || !v)) {
+      c.cmd = Cmd::Unknown;
+    } else {
+      c.cmd = isSet ? Cmd::Set : Cmd::Get;
+      if (n) strncpy(c.name, n, sizeof(c.name) - 1);
+      if (v) {
+        c.value = (float)atof(v);
+        c.hasValue = true;
+      }
+    }
+  } else if (!strcmp(tok, "BIAS")) {
+    char* v = strtok_r(nullptr, " \t,", &save);
+    c.cmd = v ? Cmd::Bias : Cmd::Unknown;
+    if (v) c.value = (float)atof(v);
   } else if (!strcmp(tok, "KICK")) {
     char* v = strtok_r(nullptr, " \t,", &save);
     c.cmd = v ? Cmd::Kick : Cmd::Unknown;

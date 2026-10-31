@@ -30,10 +30,24 @@
 //   MAG MAP        magnetometer disturbance map: step the wheels through the schedule in
 //                  mag_map.h (~11 min) while logging to MAGMAP_####.CSV; table must be FIXED.
 //                  STOP / DISARM / KILL end it (wheels stop, logging continues).
+//   MAG TEST [min] yaw-aid validation on the FIXED table (mag_test.h): ~25 min of stopped /
+//                  direction-pattern / KICK steps, then a drift run of min minutes (default
+//                  kMagTestDriftMin = 30; 0 skips it). PASS/FAIL per step on |yaw| <= 1 deg; logs
+//                  MAGTEST_####.CSV. STOP / DISARM / KILL end it. Best after warm-up + CALIBRATE 180.
 //   WHEEL <A-D> ON|OFF  take a wheel out of service / back in (Idle only). A disabled wheel is
 //                  never driven; control allocates over the rest. Encoder faults disable it too.
 //   MAG ON | MAG OFF  magnetometer heading aid on (default) / off (gyro-only yaw), mag_aid.h
 //   KICK <deg>     test: rotate the yaw ESTIMATE by deg (the aid should pull it back)
+//   SET <name> <value>  change a runtime-tunable parameter (tune.h: ATT_BW, ATT_ZETA, ATT_KI, IXX,
+//                  IYY, IZZ, SPD_KP, SPD_KI, MAG_SIGMA, NULL_GAIN, HOLD_MIN, HOLD_PEAK, MAG_HX/HY/HZ);
+//                  any state, clamped to a safe range, lost at power-off.  GET [name]  print one / all.
+//   LEVEL ZERO     deck LEVEL (spirit level) and clamped, Idle: measure the IMU mounting tilt (5 s),
+//                  rotate all IMU data into the table frame, then CALIBRATE. SET IMU_ROLL0/PITCH0.
+//   STEP TEST [deg]  air bearing, from Idle: DEMO LEVEL, then heading steps +A, 0, -A, 0 (default 5 deg,
+//                  20 s each) graded on rise / overshoot / settling / error / jitter, plus the yaw
+//                  inertia from momentum exchange (step_test.h). STOP / KILL end it.
+//   BIAS <rpm>     heading holds (ARM, DEMO LEVEL): keep every wheel at least rpm from zero with
+//                  the null mode (null_bias.h; default 100, 0 = off). Any state; next hold uses it.
 //   SLEW TEST      stretch requirement: slew to 4 attitudes (shortest rotation, smooth profile), reach
 //                  each within +/-1 deg in roll/pitch/yaw and hold 5 s; reports PASS/FAIL per target.
 //                  From Idle, wheels stopped; logs SLEW_####.CSV. After target 4 it keeps holding it
@@ -51,15 +65,17 @@
 //   RAW ON | RAW OFF  USB only in practice: stream one raw row per magnetometer sample (~100 Hz)
 //                  instead of the 20 Hz estimator CSV (magnetometer calibration data, see main.cpp)
 enum class Cmd : uint8_t { None, Arm, Disarm, Kill, Status, Ping, Test, Speed, Counts, Zero,
-                           BeginStatic, DemoSpin, DemoLevel, Stop, Calibrate, MagMap, RawOn, RawOff, Wheel, MagAidOn, MagAidOff, Kick, SlewTest, SlewSet, SlewList, FaultTest, FaultClear, Unknown };
+                           BeginStatic, DemoSpin, DemoLevel, Stop, Calibrate, MagMap, MagTest, RawOn, RawOff, Wheel, MagAidOn, MagAidOff, Kick, Bias, Set, Get, StepTest, LevelZero, SlewTest, SlewSet, SlewList, FaultTest, FaultClear, Unknown };
 
 struct Command {
   static constexpr int kAllWheels = 4;
   Cmd cmd = Cmd::None;
   int wheel = -1;    // Test/Speed: 0..3 for A..D; Speed also accepts kAllWheels
   float value = 0;   // Wheel: 1 on / 0 off. Test: duty. Speed: rpm. BeginStatic: wheel rpm (if hasValue)
+                     // MagTest: drift-run minutes (if hasValue)
   bool hasValue = false;  // BeginStatic: an rpm was given
   float v[3] = {0, 0, 0};  // SlewSet: roll, pitch, yaw (deg); wheel = target index 0..3
+  char name[16] = "";      // Set/Get: parameter name (tune.h)
   // FaultTest: wheel 0..3 (-1 = REAL), value = delay (s) if hasValue
 };
 

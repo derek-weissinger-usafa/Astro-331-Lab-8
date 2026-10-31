@@ -21,8 +21,9 @@
 //   A row-to-row gyro_seq step > 1 = lost in transfer to the Teensy; an interval > 15 ms with a
 //   step of exactly 1 = the BNO085 itself sent late.
 //
-// Never blocks loop(): SD data is buffered in RAM and written in 512-byte chunks (one per
-// service() call); radio rows are dropped if the serial TX buffer is full. Rows that don't fit
+// Never blocks loop(): SD data is buffered in RAM and written in whole 512-byte sectors (up to
+// kMaxWrite per service() call, so a backlog drains in multi-sector writes); radio rows are
+// dropped if the serial TX buffer is full. Rows that don't fit
 // the RAM buffer are counted as dropped.
 
 struct LogRow {
@@ -49,6 +50,7 @@ struct LogRow {
   char wheelStatus[5] = "....";  // per wheel: . in service, x failed by FAULT TEST (undetected), D dead (detected), - off
   Vec3 errDeg{0, 0, 0};      // controller angle error (deg, body axes); 0 when not Armed
   char faultPhase = '-';     // FAULT TEST: - off, w wait, F failed, h hold, P pass, X fail
+  long enc[4] = {0, 0, 0, 0};  // raw encoder counts: shaft positions (stopped magnet field; log replay)
 };
 
 class DataLogger {
@@ -74,8 +76,14 @@ class DataLogger {
   uint32_t droppedRows() const { return dropped_; }
 
  private:
-  static constexpr size_t kChunk = 512;
-  static constexpr size_t kBufBytes = 32768;  // ~1.3 s of 100 Hz rows; rides out SD write stalls
+  // Writes are whole 512-byte sectors, up to kMaxWrite at a time, and the file position always
+  // stays sector-aligned (the periodic flush also writes whole sectors only). MAGTEST_0001/0002
+  // lost 1.5k / 2.4k rows in 5-6 min bursts when every write was one sector and the 1 s flush wrote
+  // a partial one: a slow card then couldn't keep up with ~29 KB/s. Multi-sector writes amortise
+  // the card's per-write cost.
+  static constexpr size_t kSector = 512;
+  static constexpr size_t kMaxWrite = 8192;
+  static constexpr size_t kBufBytes = 98304;  // ~3.3 s of 100 Hz rows; rides out SD write stalls
 
   void say(const char* msg);  // status line to radio + USB
   bool writeOut(size_t n);    // write the first n buffered bytes to the card

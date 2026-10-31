@@ -32,6 +32,8 @@ class AttitudeController {
   Vec3 angleError() const { return thetaE_; }  // rad, last update
 
  private:
+  void rebuildGains();
+  uint32_t tuneVersion_ = 0;
   Quat qRef_{1.0f, 0.0f, 0.0f, 0.0f};
   Vec3 wRef_{0.0f, 0.0f, 0.0f};
   Vec3 aRef_{0.0f, 0.0f, 0.0f};

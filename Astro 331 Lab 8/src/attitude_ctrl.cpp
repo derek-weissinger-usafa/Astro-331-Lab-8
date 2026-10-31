@@ -1,12 +1,18 @@
 #include "attitude_ctrl.h"
 
-AttitudeController::AttitudeController() {
-  const float wn = params::kAttBandwidthRadS;
-  const float z = params::kAttDamping;
-  const float* I = params::kBodyInertia;
+#include "tune.h"
+
+AttitudeController::AttitudeController() { rebuildGains(); }
+
+// Kp = I wn^2, Kd = 2 zeta I wn per axis, from the runtime-tunable values (tune.h, SET).
+void AttitudeController::rebuildGains() {
+  const float wn = tune::attBw;
+  const float z = tune::attZeta;
+  const float* I = tune::inertia;
   kp_ = {I[0] * wn * wn, I[1] * wn * wn, I[2] * wn * wn};
   kd_ = {2.0f * z * I[0] * wn, 2.0f * z * I[1] * wn, 2.0f * z * I[2] * wn};
-  ki_ = {params::kAttKi, params::kAttKi, params::kAttKi};
+  ki_ = {tune::attKi, tune::attKi, tune::attKi};
+  tuneVersion_ = tune::version();
 }
 
 static float clampf(float v, float lim) { return v > lim ? lim : (v < -lim ? -lim : v); }
@@ -17,6 +23,7 @@ static Vec3 mulMat(const Mat<3, 3>& A, const Vec3& v) {
 }
 
 Vec3 AttitudeController::update(const Quat& q, const Vec3& omega, float dt, const Vec3& hWheels) {
+  if (tuneVersion_ != tune::version()) rebuildGains();
   Quat qe = qmul(q, qconj(qRef_));
   if (qe.w < 0.0f) qe = {-qe.w, -qe.x, -qe.y, -qe.z};  // take the short way around
   thetaE_ = {-2.0f * qe.x, -2.0f * qe.y, -2.0f * qe.z};
@@ -33,7 +40,7 @@ Vec3 AttitudeController::update(const Quat& q, const Vec3& omega, float dt, cons
   const Vec3 wr = mulMat(Ae, wRef_);
   const Vec3 ar = mulMat(Ae, aRef_);
 
-  const float* I = params::kBodyInertia;
+  const float* I = tune::inertia;
   const Vec3 Iw = {I[0] * omega.x, I[1] * omega.y, I[2] * omega.z};
   const Vec3 gyro = cross(omega, Iw + hWheels);
 

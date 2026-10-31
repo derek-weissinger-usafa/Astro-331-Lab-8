@@ -17,7 +17,7 @@
 // held at its start value (full PD). For roll/pitch the reference tilt is set to the measured tilt
 // every step, so those axes are only DAMPED (Kd on rate): the table settles where gravity balances
 // it and the wheels stop absorbing roll/pitch torque. (Holding exact level filled a wheel in ~15 s,
-// DEMO_0003. Simulated: pure damping stores the least wheel momentum, ~Kd x tilt travel, and
+// DEMO_0003_OLD. Simulated: pure damping stores the least wheel momentum, ~Kd x tilt travel, and
 // settles fastest; a slowly-tracking reference stored up to 5x more.) The rest tilt is the tilt
 // low-passed over kDemoRestAvgS. Phase Level until |tilt - rest| < kDemoRestTolDeg for
 // kDemoLevelHoldS, then Leveled -> LevelHold. No spin, no timeout, no wheel bias; runs until
@@ -62,6 +62,9 @@ class DemoSpin {
   float elapsed() const { return elapsed_; }  // s since start()
   // Level-only: s since level was first reached (0 if not yet).
   float levelHoldTime() const { return phase_ == DemoPhase::LevelHold ? t_ : 0.0f; }
+  // Level-only: hold the heading at its start value + offset (rad). STEP TEST (step_test.h).
+  void setHeadingOffset(float rad) { yaw_ = yawStart_ + rad; }
+  float startYaw() const { return yawStart_; }
   // Level-only: rest tilt (tilt low-passed over kDemoRestAvgS, rad).
   float restRoll() const { return rollRest_; }
   float restPitch() const { return pitchRest_; }
@@ -81,6 +84,7 @@ class DemoSpin {
   float rate_ = 0;       // current reference yaw rate
   float acc_ = 0;        // current reference yaw acceleration
   float yaw_ = 0;        // current reference yaw (rad)
+  float yawStart_ = 0;   // heading at start()
   float downFrom_ = 0;   // rate at which SpinDown began
   float elapsed_ = 0;    // total time since start()
   bool levelOnly_ = false;

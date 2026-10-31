@@ -63,42 +63,62 @@ disables a wheel automatically. Raw data: `test_runs/MAGCAL_2026-10-27_t1..t4_*.
       `test_runs/MAGMAP_0003_analysis.html`).** A–C direction steps repeat Owen's 2026-10-27 fit within ~0.15 µT; **D measured
       for the first time** (0.29, −0.99, 0.00 µT, the largest term); speed slopes ≤ 0.011 µT per rad/s; all four reversing
       together = sum of singles within 0.2–0.45°; stopped field varies ±7° with shaft positions. `kDirStep` / `kSpeedSlope`
-      in `mag_aid.cpp` updated and built — **NOT uploaded yet**. (A first run, MAGMAP_0002, sat next to a steel tool cabinet:
+      in `mag_aid.cpp` updated (uploaded 2026-10-30 with `MAG TEST`). (A first run, MAGMAP_0002, sat next to a steel tool cabinet:
       not used. Keep the table away from large steel.)
 - [ ] 🧪💻 **Hard-iron calibration before any yaw motion.** The raw field changed since 2026-10-16 (|B| 50.5 → 64.0 µT, Earth
       ≈ 52 µT): there is now a large table-fixed offset. Harmless for heading hold (references learned in place) but it
       distorts the heading as soon as the table yaws (DEMO SPIN, slews). Fit it from a full yaw turn on the air bearing.
-- [ ] 🧪 Then: repeat test 5 with all four wheels (upload first; ~10 min warm-up + `CALIBRATE 180`; kick recovery stopped +
-      spinning, mixed direction patterns), then a ≥ 30 min drift run. Pass: |yaw| ≤ 1° throughout.
+- [ ] 💻 **Wheel bias during heading holds (2026-10-30, built + simulated, uploaded 2026-10-31):** `ARM` / `DEMO LEVEL` keep
+      every wheel ≥ 100 rpm from zero via the null mode (`null_bias.h`, `BIAS <rpm>`), so the aid isn't gated by stopped
+      or slowly reversing wheels. Verify on the air bearing (`hb=` in STATUS, `mag_mode` in the log).
+- [ ] 💻 **Predicted references (2026-10-30, built, uploaded 2026-10-31):** a new direction pattern the aid can't learn (stale)
+      now copies the closest known pattern's reference instead of going gyro-only (`STATUS mpred=`). Check the accuracy
+      on MAGTEST_0001 with `tools/replay` `--predict`.
+- [x] 🧪 **MAG TEST, all four wheels (2026-10-30, `test_runs/MAGTEST_0001_report.html`): 36/37 PASS** on board; the miss
+      was 1.02° at 300 rpm. Gyro alone: 5.7 °/h. Log replay: learning each new pattern at the current yaw random-walks the
+      error; predicting it instead passes 37/37 (worst 0.77°). Prediction is now the firmware default (uploaded 2026-10-31).
+- [x] 🧪 **MAG TEST rerun with prediction (2026-10-31, `test_runs/MAGTEST_0002_report.html`): stopped at 10/15** — the
+      reversal model moved ~1° between sessions (raw |B| 71 → 65 µT). Replays of both runs: neither learning nor prediction
+      is reliably within ±1° over 14+ pattern changes. Firmware back to learning in place (uploaded 2026-10-31).
+- [x] 💻 **Uploaded 2026-10-31:** the learning default + SD logger fix (sector-aligned multi-sector writes, 96 KB buffer). Check
+      `drop=` stays 0 over a long log.
+- ~~Move the magnetometer away from the wheels~~ — **not possible (team decision, 2026-10-31)**: the IMU stays where it
+      is, so the 0.3–1.2° per-new-pattern reference error is a fixed limit; keep pattern changes few during holds.
+- [ ] 📊 **Update the final presentation for MAGTEST_0002 (deferred by the team, 2026-10-31).** Slides 4, 20 and 27 and the
+      notes on slide 4 still say the current firmware replays 37/37 with predicted references, and `fig9_magtest.png` shows
+      that as the gold "current firmware" line. Rework them to show both runs (run 1 36/37 learned; run 2 10/15 predicted;
+      replays both ways) and the learning default. Builder: scratchpad `deck/build_deck.py` + `make_magtest_fig2.py`
+      (rebuild from the team's current file, not an old copy).
+- [x] 🧪 **DEMO LEVEL heading holds, aid on vs off (2026-10-31, `test_runs/DEMO_0003.CSV`, PROGRESS_LOG §2.17):** both held
+      the heading (marks by eye; magnetometer heading within ~0.5°); aid in use 94%. Found and fixed wheel-bias planner chatter
+      (15 pattern flips in 6 s at the peak budget) — **fix built, not uploaded.**
+- [x] 💻 **Planner fix uploaded 2026-10-31.**
+- [ ] 🔧 **Laser pointer** on the deck + wall marks (1° ≈ 5 cm at 3 m) for heading truth; then **long holds (≥ 5 min) aid on vs
+      `MAG OFF`**, with `CALIBRATE 180` on the stand and the table not turned by hand before ARM (free turning moves the bias:
+      hard iron uncorrected).
+- [ ] 🔧 Strain-relieve the IMU STEMMA/INT/RST wiring (one chip reset while floating the table, 2026-10-31).
 
-## 1. Next session: upload and diagnose (in this order)
+## 1. Next session: air-bearing run sheet (written 2026-10-30, in this order)
 
-- [ ] 💻 **Upload the latest `main`** to the Teensy (procedure has changed since: see CLAUDE.md "Uploading and
-      running" — USB with the battery off; COM ports differ per PC):
-      It is NOT on the board yet. It adds: **60 s startup calibration**, `CALIBRATE`, IMU sequence
-      diagnostics, `DEMO SPIN` / `STOP`.
-      RST is wired now (2026-10-20): the firmware hardware-resets the BNO085 at startup, so uploads no
-      longer need a power cycle. If the IMU isn't found, the firmware retries every second and prints
-      `# ERROR: BNO085 not responding ... i2c: <addresses>` (`none` = no power/ground or I2C lines).
-- [ ] 🧪 **Keep the table still for the 60 s calibration** after every boot (progress prints every 10 s
-      over the XBee). If bumped, it restarts.
-- [ ] 🧪 **Find where IMU samples are lost** (static test lost ~1/3 of gyro samples and froze up to 330 ms,
-      38 times over 100 ms, in clusters ~20 s apart):
-  - [ ] Idle ~5 min, **SD logging off** → send `STATUS`, note `miss=`, `chipgap=`, `maxgap=`.
-  - [ ] Power-cycle, `BEGIN STATIC TEST`, ~5 min → `STATUS` again.
-  - Reading it: large **`miss`** = reports the BNO085 sent but the Teensy never read. Large
-    **`chipgap`** = the BNO085 itself sent late. `lat=` = worst INT-to-read delay (ms; datasheet wants
-    ~1). If `miss`/`lat` only jump while logging → SD writes are the cause.
-  - **2026-10-20 finding:** most of the old ~1/3 loss was the Adafruit library, not the bus: its
-    `getSensorEvent()` keeps only the last report of each transfer, and gyro+accel+mag at 100 Hz often
-    share one. Fixed (own SH2 callback + queue). First check, idle, SD off: `miss=0`, `maxgap=11` ms,
-    `lat` < 0.05 ms. With SD on: `miss=102, lat=40` → yield() servicing → `miss=12, lat=43` → SD
-    DMA mode → STATIC_0008 (`miss=370`, 314 from 2 chip resets) → INT edge-triggered reads + 5 ms
-    fallback → **STATIC_0009: 25 of ~29,250 lost (0.085%), max gap 90 ms, no resets. Solved.** The rest
-    are BNO085-internal 60–90 ms stalls (pairs ~22.4 s apart every ~132 s; not the calibration saves).
-- [ ] 🧪 **Repeat the static test with the 60 s calibration** (~30 min, motors off, table still,
-      `BEGIN STATIC TEST`). Expect yaw drift **~6 °/h** instead of 27 °/h. Drop the CSV in `test_runs/`
-      for analysis; the new `gyro_seq` columns will show exactly which samples were lost.
+(The old §1 items from 2026-10-20 are done: IMU sample loss solved, STATIC_0009.)
+
+- [ ] 🔧 Before: solder + strain-relieve wheel D's encoder lead; **weigh the table** (for `tools/balance.py`); have a
+      spirit level; keep the table away from steel cabinets.
+- [ ] 💻 **Upload** (USB with the battery off, CLAUDE.md "Uploading and running"). Check on USB: `GET` lists the
+      tunables, `STATUS` ends with `hb=…,mpred=…`.
+- [ ] 🧪 Battery on, **~10 min warm-up**, table clamped.
+- [ ] 🧪 **`LEVEL ZERO`** with the deck level (spirit level): prints the IMU mounting roll/pitch and recalibrates. Note
+      the values for `kImuMountRollDeg/PitchDeg`. Then **`CALIBRATE 180`**.
+- [ ] 🧪 Release onto the air bearing. Nudge it and let it swing ~20 s with the wheels stopped, logging
+      (`BEGIN STATIC TEST 0`) → `python tools/balance.py <log> --mass <kg>`.
+- [ ] 🧪 **`STEP TEST`** (5° steps, ~2 min): note rise / overshoot / jitter and the measured **Izz** → `SET IZZ <value>`,
+      repeat. If it overshoots or jitters, `SET ATT_ZETA` / `SET ATT_BW` and repeat (no upload needed).
+- [ ] 🧪 **Requirement 1 + 2:** `DEMO LEVEL` ~5 min with the aid on (the wheel bias keeps it in use: `mag=S`, `hb=`);
+      `STOP`. Then `MAG OFF`, the same again, `MAG ON`. Compare the yaw drift (SD logs; `tools/replay`).
+- [ ] 🧪 **Hard iron:** `MAG OFF`, turn the floating table slowly through a full turn by hand (wheels idle), logging →
+      `python tools/hardiron_fit.py <log>` → `SET MAG_HX/HY/HZ …`, `MAG ON`.
+- [ ] 🧪 **Requirement 3:** `FAULT TEST B` then `DEMO LEVEL` (wheel B dies after 10 s; graded on board).
+- [ ] 💻 Put the values that worked into `control_params.h` (Izz, gains, mounting, hard iron) and upload.
 
 ## 2. Hardware fixes
 
@@ -125,6 +145,23 @@ disables a wheel automatically. Raw data: `test_runs/MAGCAL_2026-10-27_t1..t4_*.
 - [ ] 🧪 Hard-iron (full-turn) magnetometer calibration from a `DEMO SPIN` log (wheels at the bias speed; skip the ~2 s windows where A/C cross zero).
 
 ## 3. Firmware (💻, mostly with Claude)
+
+**Built 2026-10-30 evening, uploaded 2026-10-31 (not yet run on the table):**
+- [ ] 💻🧪 **Runtime tuning** `SET <name> <value>` / `GET` (`tune.h`): attitude bandwidth/damping/Ki, inertias, speed-loop
+      gains, mag heading noise, null gain, hold bias, mag hard iron, IMU mounting. Not saved: copy good values into
+      `control_params.h`. First use: tune on the air bearing without re-uploading.
+- [ ] 🧪 **`STEP TEST [deg]`** (`step_test.h`) on the air bearing: heading steps ±5° on top of DEMO LEVEL, graded rise /
+      overshoot / settle / error / jitter, plus **I_zz from momentum exchange** (motor-level sim: within 3% of the
+      expected value, drag torque recovered). Use the measured I_zz (`SET IZZ`) before tuning `ATT_BW`.
+- [ ] 🧪 **`LEVEL ZERO`**: deck level by spirit level, table clamped → measures the IMU mounting tilt, rotates all IMU data
+      into the table frame, recalibrates. Needed for requirement 2 (table attitude, not IMU-board attitude). Then put
+      the printed roll/pitch into `kImuMountRollDeg/PitchDeg`.
+- [ ] 🧪💻 **Hard-iron fit**: log a long yaw turn on the air bearing (`MAG OFF`, DEMO SPIN or by hand), run
+      `tools/hardiron_fit.py <LOG>`, try the result with `SET MAG_HX/HY/HZ`, then copy into `kMagHardIronUt`.
+- [ ] 🔧 **Balance for the slews (`tools/balance.py`, DEMO_0003_OLD):** the deck is level to ~0.03 mm, but the centre of mass
+      is ~4.4 mm below the bearing centre (3.3 s swing). The ±10° slews need a ~55 s swing: raise the CG ~4.4 mm,
+      ≈ 22,000 g·mm (e.g. 100 g raised 22 cm). Weigh the table (`--mass`) and re-run after each change (free swings
+      after a DISARM are enough data).
 
 - [x] **Interrupt-driven IMU reads** (INT pin 20, RST pin 21; `imu_bno085.cpp`). INT must NOT have the
       Teensy pull-up: with `INPUT_PULLUP` the line never read low and the chip sent nothing.

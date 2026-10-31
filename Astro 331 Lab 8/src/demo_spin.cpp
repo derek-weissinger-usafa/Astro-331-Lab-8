@@ -14,7 +14,7 @@ void DemoSpin::start(const Quat& qStart, float targetRate, bool levelOnly) {
   rate_ = acc_ = 0.0f;
   t_ = 0.0f;
   levelOkT_ = 0.0f;
-  yaw_ = qToEuler321(qStart).z;  // keep the current heading; only remove tilt
+  yaw_ = yawStart_ = qToEuler321(qStart).z;  // keep the current heading; only remove tilt
 
   if (levelOnly) {
     // DEMO LEVEL: start the rest-tilt reference at the current tilt (no slew to level).

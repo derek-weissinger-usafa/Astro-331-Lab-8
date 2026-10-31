@@ -46,6 +46,35 @@ Vec3 MagAid::correct(const Vec3& m, const float speed[4], const bool enabled[4])
   return c;
 }
 
+// Known spinning reference whose direction pattern differs from `pattern` in the fewest enabled
+// wheels (-1 if none).
+int MagAid::nearestSpinRef(int pattern, const bool enabled[4]) const {
+  int best = -1, bestD = 99;
+  for (int k = 0; k < kSpinRefs; k++) {
+    if (!spin_[k].valid || k == pattern) continue;
+    int d = 0;
+    for (int i = 0; i < 4; i++)
+      if (enabled[i] && (((k ^ pattern) >> i) & 1)) d++;
+    if (d < bestD) {
+      bestD = d;
+      best = k;
+    }
+  }
+  return best;
+}
+
+void MagAid::setHardIron(const Vec3& h) {
+  if (h.x == hard_.x && h.y == hard_.y && h.z == hard_.z) return;
+  hard_ = h;
+  stopped_.valid = false;
+  for (int k = 0; k < kSpinRefs; k++) spin_[k].valid = false;
+  lpInit_ = false;
+  settleS_ = 0.0f;  // restart the settle; learning is allowed if the aid was fresh
+  learnS_ = 0.0f;
+  learnN_ = 0;
+  learnSum_ = {0, 0, 0};
+}
+
 void MagAid::reset() {
   stopped_.valid = false;
   for (int k = 0; k < kSpinRefs; k++) spin_[k].valid = false;
@@ -106,7 +135,7 @@ bool MagAid::update(const Vec3& magRaw, const long counts[4], const float speed[
   const WheelState ws = still ? WheelState::Stopped : spinning_ ? WheelState::Spinning : WheelState::Gated;
 
   // Low-pass the corrected field (removes the shaft-rate and PWM-aliased noise).
-  const Vec3 c = correct(magRaw, speed, enabled);
+  const Vec3 c = correct(magRaw - hard_, speed, enabled);
   if (!lpInit_) {
     lp_ = c;
     lpInit_ = true;
@@ -142,6 +171,17 @@ bool MagAid::update(const Vec3& magRaw, const long counts[4], const float speed[
   if (match && isStopped) {
     for (int i = 0; i < 4; i++)
       if (enabled[i] && labs(counts[i] - ref.counts[i]) > kMagStoppedCountTol) match = false;
+  }
+
+  if (!match && !isStopped && (predictAlways_ || (learnN_ == 0 && sinceUpdateS_ > kMagLearnMaxGapS))) {
+    // New direction pattern that can't be learned now: predict it from the closest known one.
+    const int k = nearestSpinRef(pattern & (kSpinRefs - 1), enabled);
+    if (k >= 0) {
+      ref.field = spin_[k].field;
+      ref.valid = true;
+      predicted_++;
+      match = true;
+    }
   }
 
   if (!match) {
