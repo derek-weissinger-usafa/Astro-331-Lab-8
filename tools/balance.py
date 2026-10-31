@@ -118,10 +118,18 @@ def main():
         fr = fit_damped(t, d[k, 1])
         fp = fit_damped(t, d[k, 2])
         acc = d[k, 3:6].mean(axis=0)
-        res.append(dict(t0=t[0], t1=t[-1], roll=fr, pitch=fp, acc=acc))
+        # A free swing fits a damped sinusoid closely; a stretch where the table was handled or yawing
+        # hard (after a braking kick) doesn't (DEMO_0003: 1.2-1.9 deg rms with "periods" of 7-15 s, vs
+        # 0.07-0.22 deg for real swings). Keep a stretch only if both axes fit within 0.4 deg rms.
+        ok = all(f[4] <= 0.4 for f in (fr, fp))
         print(f'stretch {t[0]:8.1f}-{t[-1]:8.1f} s: roll period {2 * math.pi / fr[0]:5.2f} s (amp {fr[3]:.2f} deg, '
               f'rest {fr[2]:+.2f}, fit rms {fr[4]:.3f}), pitch period {2 * math.pi / fp[0]:5.2f} s (amp {fp[3]:.2f} deg, '
-              f'rest {fp[2]:+.2f}, fit rms {fp[4]:.3f})')
+              f'rest {fp[2]:+.2f}, fit rms {fp[4]:.3f}){"" if ok else "  -> rejected (poor fit: not a free swing)"}')
+        if ok:
+            res.append(dict(t0=t[0], t1=t[-1], roll=fr, pitch=fp, acc=acc))
+    if not res:
+        sys.exit('no stretch fits a free swing well enough')
+    segs = [k for k in segs if any(abs(d[k[0], 0] - r['t0']) < 1e-6 for r in res)]
 
     # Average the stretches, weighted by swing amplitude over fit error (disturbed stretches count less).
     def wavg(key, idx):

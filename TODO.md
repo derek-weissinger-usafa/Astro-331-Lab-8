@@ -158,7 +158,13 @@ disables a wheel automatically. Raw data: `test_runs/MAGCAL_2026-10-27_t1..t4_*.
       the printed roll/pitch into `kImuMountRollDeg/PitchDeg`.
 - [ ] 🧪💻 **Hard-iron fit**: log a long yaw turn on the air bearing (`MAG OFF`, DEMO SPIN or by hand), run
       `tools/hardiron_fit.py <LOG>`, try the result with `SET MAG_HX/HY/HZ`, then copy into `kMagHardIronUt`.
-- [ ] 🔧 **Balance for the slews (`tools/balance.py`, DEMO_0003_OLD):** the deck is level to ~0.03 mm, but the centre of mass
+- [ ] 🔧 **Balance has drifted since 10-21 (`tools/balance.py`, DEMO_0003 free swings, 2026-10-31):** swing 3.2–3.5 s → 2.87 s,
+      CG 4.5 → 6.1 mm below the bearing centre, rest tilt (−0.14°, −0.18°) → (+1.17° roll, −2.25° pitch), horizontal offset
+      0.24 mm −x / 0.12 mm −y. The period doesn't depend on the IMU mount, so mass really moved lower and off-centre (Teensy
+      swap, rewiring, battery cells out/in since then?). To level: ≈ 1,200 g·mm toward +x (wheel A) and ≈ 620 g·mm toward
+      +y (wheel B), e.g. 20 g moved 60 mm / 31 mm — after `LEVEL ZERO` with a spirit level (an IMU mount offset shifts these).
+      Assumes m = 5 kg, I = 0.0623 kg·m²: weigh the table, `STEP TEST` for I_zz.
+- [ ] 🔧 (older numbers, DEMO_0003_OLD) **Balance for the slews:** the deck was level to ~0.03 mm, but the centre of mass
       is ~4.4 mm below the bearing centre (3.3 s swing). The ±10° slews need a ~55 s swing: raise the CG ~4.4 mm,
       ≈ 22,000 g·mm (e.g. 100 g raised 22 cm). Weigh the table (`--mass`) and re-run after each change (free swings
       after a DISARM are enough data).

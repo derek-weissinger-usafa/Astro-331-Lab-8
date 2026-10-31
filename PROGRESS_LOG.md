@@ -275,6 +275,9 @@ stand (z bias −0.0379 °/s), table floated, then two holds over the XBee; whee
   moved the decision. Fix (`null_bias.h`): decide on 0.5 s low-passed speeds, treat clearances within 1 rad/s as equal,
   and hold each change ≥ 5 s (uploaded 2026-10-31). Replaying test 2's wheel speeds through it: 1 change; motor-level simulation unchanged
   (hold 370 s vs 347 s without bias, 2 changes, 0.1° yaw error, fault test still passes).
+- **Balance (free swings after each STOP, `tools/balance.py`):** swing period 2.87 s (10-21: 3.2–3.5 s), centre of mass
+  6.1 mm below the bearing centre (was 4.5 mm), 0.24 mm −x / 0.12 mm −y off-centre, rest tilt +1.17° roll / −2.25° pitch
+  (was −0.14° / −0.18°). The period is independent of the IMU mount, so the mass distribution changed since 10-21.
 - **SD logger fix:** 0 rows lost over 9 min / 17 MB (earlier losses began 7–13 min in, so a longer log is still needed).
   IMU: 168 samples missed (0.3%), and one chip reset while the table was being floated: strain-relieve the STEMMA/INT/RST
   wiring.
