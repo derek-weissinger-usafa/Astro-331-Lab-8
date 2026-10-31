@@ -21,14 +21,17 @@ disables a wheel automatically. Raw data: `test_runs/MAGCAL_2026-10-27_t1..t4_*.
       **The old Teensy is dead — do not power it again.** Cause not found: all four drivers' VIN–VCC and VM–VCC
       read open, and on every motor the red/black leads to encoder blue/yellow/white read open (12 V bridging onto
       an encoder was the top suspect; wheel D's encoder failed around the same time). Watch for a repeat.
-      Spare Teensy 4.1 brought up in stages (flashed 5ec01a5 → VIN–VUSB trace cut → VIN/GND only, 3.3 V OK →
+      Spare Teensy 4.1 brought up in stages (flashed 5ec01a5 → VIN–VUSB trace cut attempted → VIN/GND only, 3.3 V OK →
       BNO085 + XBee → encoders → motors), checking 3.3 V and heat at each step; it stays cool.
       Results: XBee link OK; after reseating the IMU wiring, `rst=1`, `miss=0`, `maxgap=13` ms through
       calibration (a loose STEMMA/RST connection first gave 7 chip resets and ~1,100 lost samples). Hand-turn
       counts A −389 (1 turn), B −734 (2), C −1185 (3), clockwise = negative as expected, no swapped wires; D read
       0 (loose encoder wire, since fixed). `TEST x 0.3`: A +45.0, B +45.7, C +37.5 rad/s, so motor/encoder signs are right
       on the spare. IMU stayed clean with motors running. SD card moved to the spare (detected when a test opens
-      a log). Its VIN–VUSB trace is cut: uploads need logic power on. Wheel D: see below (intermittent).
+      a log). **Its VIN–VUSB pads are still joined** (the cut didn't separate them): upload over USB with the battery
+      off, unplug USB, then battery on and work over the XBee (CLAUDE.md, "Uploading and running"). Wheel D: see below.
+- [ ] 🔧 **Separate the spare Teensy's VIN–VUSB pads** (re-cut, confirm no continuity). Until then USB and the logic
+      battery must never be on together, and there's no USB serial (no `RAW ON` / `tools/mag_cal.py`) while running.
       Report: `Reports/Teensy_Recovery_2026-10-30.html`.
 - [ ] 🔧 **Wheel D encoder connection is INTERMITTENT (2026-10-30): make it permanent.** Cause of the old "one
       channel dead" symptom (counts ~0 while D spun, ±1 flicker, fake −165 rad/s spikes): an encoder wire almost pulled
@@ -56,13 +59,22 @@ disables a wheel automatically. Raw data: `test_runs/MAGCAL_2026-10-27_t1..t4_*.
       +46.3 rad/s (A +46.0) and breakaway from rest at 0.08–0.10 duty, the same as A and B. Most likely sticky after
       sitting (grease / light rub). If a first start is slow again it may trip the dead-motor detector; give the wheels
       a short spin (`TEST x 0.3`) before a FAULT TEST run.
-- [ ] 🧪 Then: repeat test 5 with A, B, C (and D once repaired) (kick recovery stopped + spinning, 8 direction combos), then a ≥ 30 min drift
-      run. Table hard-iron (rotates with the body) is not modelled; matters only for big yaw slews.
+- [x] 🧪 **Wheel field recalibration, all four wheels (2026-10-30, `MAG MAP` → `test_runs/MAGMAP_0003.CSV`, analysis
+      `test_runs/MAGMAP_0003_analysis.html`).** A–C direction steps repeat Owen's 2026-10-27 fit within ~0.15 µT; **D measured
+      for the first time** (0.29, −0.99, 0.00 µT, the largest term); speed slopes ≤ 0.011 µT per rad/s; all four reversing
+      together = sum of singles within 0.2–0.45°; stopped field varies ±7° with shaft positions. `kDirStep` / `kSpeedSlope`
+      in `mag_aid.cpp` updated and built — **NOT uploaded yet**. (A first run, MAGMAP_0002, sat next to a steel tool cabinet:
+      not used. Keep the table away from large steel.)
+- [ ] 🧪💻 **Hard-iron calibration before any yaw motion.** The raw field changed since 2026-10-16 (|B| 50.5 → 64.0 µT, Earth
+      ≈ 52 µT): there is now a large table-fixed offset. Harmless for heading hold (references learned in place) but it
+      distorts the heading as soon as the table yaws (DEMO SPIN, slews). Fit it from a full yaw turn on the air bearing.
+- [ ] 🧪 Then: repeat test 5 with all four wheels (upload first; ~10 min warm-up + `CALIBRATE 180`; kick recovery stopped +
+      spinning, mixed direction patterns), then a ≥ 30 min drift run. Pass: |yaw| ≤ 1° throughout.
 
 ## 1. Next session: upload and diagnose (in this order)
 
-- [ ] 💻 **Upload the latest `main`** to the Teensy (USB, COM3):
-      `~/.platformio/penv/Scripts/pio.exe run -t upload --upload-port COM3` from the PlatformIO folder.
+- [ ] 💻 **Upload the latest `main`** to the Teensy (procedure has changed since: see CLAUDE.md "Uploading and
+      running" — USB with the battery off; COM ports differ per PC):
       It is NOT on the board yet. It adds: **60 s startup calibration**, `CALIBRATE`, IMU sequence
       diagnostics, `DEMO SPIN` / `STOP`.
       RST is wired now (2026-10-20): the firmware hardware-resets the BNO085 at startup, so uploads no

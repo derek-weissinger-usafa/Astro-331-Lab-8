@@ -6,24 +6,25 @@
 
 using namespace params;
 
-// Mean field of each spinning wheel vs its speed, fixed-table sweep 2026-10-27 (test 3: each wheel
-// alone at +-100/200/300 rpm, 12 s steps). Per wheel and body axis:
+// Mean field of each spinning wheel vs its speed, fixed table. Per wheel and body axis:
 //   field = const + kDirStep * sign(speed) + kSpeedSlope * (|speed| - kMagRefSpeedRadS)
-// The constant is absorbed by the learned reference. The direction step is the big term
-// (+-0.3-0.7 uT, i.e. 1-2 deg of heading per reversal); speed hardly matters once spinning
-// (<= 0.013 uT per rad/s). Fit residual <= 0.15 uT rms (<= 0.8 deg). Since each direction
-// pattern now has its own reference, kDirStep only matters within a pattern (where it is
-// constant); it is kept as the measured record. Wheel D's encoder was dead during the
-// calibration (one channel lost), so D has no measured terms (zeros): recalibrate it once D is
-// repaired (tools/mag_cal.py).
-static const float kSpeedSlope[4][3] = {{-0.0031f, 0.0059f, 0.0020f},
-                                        {-0.0052f, -0.0062f, -0.0035f},
-                                        {0.0134f, -0.0021f, 0.0028f},
-                                        {0.0f, 0.0f, 0.0f}};
-static const float kDirStep[4][3] = {{0.319f, 0.332f, -0.082f},
-                                     {-0.471f, 0.109f, -0.007f},
-                                     {-0.717f, -0.232f, -0.005f},
-                                     {0.0f, 0.0f, 0.0f}};
+// The constant is absorbed by the learned reference. Values from MAG MAP 2026-10-30
+// (test_runs/MAGMAP_0003.CSV, analysis MAGMAP_0003_analysis.html: each wheel alone at +-100/200
+// rpm, 14 s settled means, spare Teensy, all four wheels). A-C agree with the 2026-10-27 sweep
+// (test 3: 0.319/0.332/-0.082, -0.471/0.109/-0.007, -0.717/-0.232/-0.005 uT) within ~0.15 uT;
+// D is measured for the first time (its encoder was dead before). The direction step is the big
+// term (0.3-1.0 uT, 0.7-1.7 deg of heading per reversal); speed hardly matters once spinning
+// (<= 0.011 uT per rad/s). All four reversing together matches the sum of the single-wheel steps
+// within 0.2-0.45 deg. Since each direction pattern has its own reference, kDirStep only matters
+// within a pattern (where it is constant); it is kept as the measured record.
+static const float kSpeedSlope[4][3] = {{-0.0112f, 0.0037f, 0.0035f},
+                                        {-0.0074f, -0.0036f, 0.0005f},
+                                        {0.0056f, -0.0005f, 0.0041f},
+                                        {0.0009f, -0.0030f, -0.0016f}};
+static const float kDirStep[4][3] = {{0.304f, 0.411f, -0.039f},
+                                     {-0.555f, 0.128f, -0.033f},
+                                     {-0.577f, -0.353f, -0.036f},
+                                     {0.287f, -0.988f, 0.004f}};
 
 // A^T v: body -> inertial
 static Vec3 toInertial(const Quat& q, const Vec3& v) {

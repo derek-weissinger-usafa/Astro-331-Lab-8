@@ -173,13 +173,20 @@ What changed (`src/imu_bno085.cpp`, `src/main.cpp`, `src/data_logger.cpp`):
   3.3 V, no LEDs, not seen on USB. Blocks all testing; see report §1.7 and `TODO.md` §0.
 - **2026-10-30: resolved with the spare Teensy.** The old board's 3.3 V rail was shorted on the board itself
   (0.8 Ω bare, very hot when powered): it is dead. No wiring cause found (driver VIN–VCC / VM–VCC and every
-  motor-lead-to-encoder check read open). The spare was flashed (5ec01a5), its VIN–VUSB trace cut, and brought up
+  motor-lead-to-encoder check read open). The spare was flashed (5ec01a5) and brought up
   in stages with 3.3 V and heat checks: IMU clean after reseating its wiring (1 reset, 0 lost samples), XBee OK,
-  encoders A–C OK, `TEST x 0.3` A +45.0 / B +45.7 / C +37.5 rad/s (C ~17% slow).
+  encoders A–C OK, `TEST x 0.3` A +45.0 / B +45.7 / C +37.5 rad/s (C ~17% slow). Its VIN–VUSB pads are still
+  joined (the cut didn't separate them), so uploads are done over USB with the battery off and tests are run over
+  the XBee (procedure in `CLAUDE.md`, "Uploading and running").
 - **2026-10-30: wheel D's encoder** — a wire was almost pulled out. Reseated, `TEST D ±0.3` gives +44.9 / −46.8 rad/s,
   but it failed again ~30 min later and needed a second reseat: the connection is **intermittent** and must be soldered
   or crimped with strain relief. Wheel C's slow first start (37.5 rad/s) did not repeat: pack C 12.3 V, retests
   46.2–46.5 rad/s, same breakaway (0.08–0.10 duty) as A and B. Full write-up: `Reports/Teensy_Recovery_2026-10-30.html`.
+- **2026-10-30: magnetometer wheel model recalibrated with all four wheels** (`MAG MAP`, fixed table, run over the XBee;
+  `test_runs/MAGMAP_0003_analysis.html`). A–C repeat Owen's 2026-10-27 values within ~0.15 µT; wheel D measured for the
+  first time; speed hardly matters; all four reversing together adds up within 0.2–0.45°. New constants in `mag_aid.cpp`
+  (built, not yet uploaded). The raw field now carries a large table-fixed offset (|B| 64 µT vs ~52 µT Earth), so a
+  hard-iron calibration is needed before tests where the table yaws.
 
 ### 2.13 SLEW TEST, stretch requirement (2026-10-29, first draft)
 - New `SLEW TEST` command (`slew_test.h/.cpp`): four target attitudes, shortest-rotation (eigenaxis) slews on a

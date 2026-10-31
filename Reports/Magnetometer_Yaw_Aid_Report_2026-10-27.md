@@ -213,6 +213,10 @@ In order. 🔧 = hands-on hardware, 💻 = firmware/analysis, 🧪 = table test.
 - Calibration data capture: `RAW ON` over USB at 115200 baud. Each `R,` row is described in §1.1.
 - The Teensy enumerates as **COM5** on this PC (older notes say COM3). Upload with
   `pio run -t upload --upload-port COM5`.
+- **Changed 2026-10-30 (spare Teensy):** its VIN–VUSB pads are still joined, so USB and the logic battery must never
+  be on together. Upload over USB with the battery off, unplug USB, then run on the battery and command over the
+  XBee only (`CLAUDE.md`, "Uploading and running"). `RAW ON` and `tools/mag_cal.py` need USB while running, so
+  until the pads are separated use `MAG MAP` (SD log) instead: see `test_runs/MAGMAP_0003_analysis.html`.
 - Shell note: the Claude Code Bash tool collapses `\\n` in heredocs, so firmware edits made through
   inline Python scripts need care.
 

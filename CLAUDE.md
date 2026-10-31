@@ -123,7 +123,7 @@ PKCELL −, boost GND, driver GNDs, Teensy GND ── common ground point (never
 - **Logic switch:** on the PKCELL + lead, ahead of the boost; ≥ 1 A DC is plenty.
 - **Power sequence:** logic on first, then motors (so the firmware has driven the PWM pins low before the wheels get power and they don't twitch at boot — `setup()` waits up to 3 s for USB serial before `WheelMotor::begin()` zeroes the PWM pins, so wait a few seconds after logic on before flipping the motor switch); motors off first, then logic.
 
-- **Before connecting any pack:** split each driver's VIN from VCC (the short orange wire ties them today — left tied, 12 V reaches VCC and back-feeds the Teensy VIN), and cut the Teensy's VIN–VUSB trace so the boost doesn't back-feed USB.
+- **Before connecting any pack:** split each driver's VIN from VCC (the short orange wire ties them today — left tied, 12 V reaches VCC and back-feeds the Teensy VIN), and cut the Teensy's VIN–VUSB trace so the boost doesn't back-feed USB. **The spare Teensy fitted 2026-10-30 still has VIN and VUSB joined** (the cut didn't separate the pads): never have USB and the logic battery on at the same time — see "Uploading" below.
 - Teensy 4.1 VIN accepts **3.6–5.5 V** (PJRC). The PKCELL spans 3.0–4.2 V, so it's in spec when charged but drops below 3.6 V for the end of its discharge. The team chose to boost it to a 5 V rail with a **Pololu U3V70F5** (2.9–5 V in, 5 V ±4% out, ~7 A continuous input, reverse-voltage protection, UVLO 2.4 V falling, ENABLE pin = true shutdown). Add ~33 µF electrolytic across its VIN/GND to suppress plug-in LC spikes. The board is marked **0J11050**, which every U3V70x variant (5–15 V fixed and 4.5–20 V adjustable) shares — the team's board measured **5.09 V out from 4.15 V in** (no load), confirming the 5 V version. Logic load ≈ 0.25 A at 5 V ≈ 0.4 A from the pack, well inside the 2 A lead; runtime ≈ a day.
 - The logic has its own pack, so motor surges can't brown out the Teensy/IMU/XBee (the dissertation ran its Arduino off a motor pack and listed that as a possible cause of its oscillations).
 - Packs discharge unevenly, so the same PWM duty gives different wheel torque per pack — close a wheel-speed loop on the encoders rather than commanding raw PWM.
@@ -146,6 +146,17 @@ PKCELL −, boost GND, driver GNDs, Teensy GND ── common ground point (never
 ```
 
 Always quote paths — the directory names contain spaces.
+
+### Uploading and running (since 2026-10-30: USB and battery never together)
+
+The spare Teensy's **VIN and VUSB pads are still joined**, so USB 5 V and the boost's 5 V rail would be tied together if both were on: current can flow back into the computer or the boost. Until the pads are properly separated (cut, then confirm no continuity between them):
+
+1. **Motor switch off, logic switch off.**
+2. **Plug in USB** (it powers the Teensy by itself) and upload: `pio.exe run -t upload`. PlatformIO finds the board; it is **COM7** on Derek's PC (COM numbers differ per PC; older notes say COM3/COM5). Check it boots: the USB serial shows `# SD: card ready …` and `# BNO085 ready …` (or `BNO085 not responding` on the bench with no IMU).
+3. **Unplug USB**, then logic on, then motors a few seconds later. The board reboots and runs its 60 s calibration (keep the table still).
+4. **Command and monitor over the XBee only:** the ground-station dongle is **COM5** on Derek's PC, 9600 baud (`PING`, `STATUS`, test commands; ~2 Hz data rows). Logs go to the SD card.
+
+Consequences: there is no USB serial link while the table runs on its battery, so `RAW ON` (100 Hz USB stream) and `tools/mag_cal.py` can't be used; use `MAG MAP` (runs on the board, logs to SD) for magnetometer calibration instead. Once the pads are separated, USB can stay connected with logic on again (uploads then need logic on, since USB no longer powers the board).
 
 ## Conventions
 

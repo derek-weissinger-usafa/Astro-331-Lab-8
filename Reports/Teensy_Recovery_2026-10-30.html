@@ -45,7 +45,8 @@ Owen Crawley.</p>
 <div class="n">all ≈ 44–47 rad/s at 0.3 duty with correct signs; <span class="amber">wheel D's encoder lead is intermittent</span></div></div>
 </div>
 <div class="box">The firmware on the spare is commit <code>5ec01a5</code>, the same that went to <code>main</code> on 2026-10-29. The spare's
-VIN–VUSB trace is cut like the old board's, so <b>uploads need logic power on</b> (USB alone doesn't power it).</div>
+VIN–VUSB pads are <b>still joined</b> (the cut didn't separate them), so <b>USB and the logic battery must never be on together</b>: upload over
+USB with the battery off, unplug USB, then run on the battery and command over the XBee (CLAUDE.md, "Uploading and running").</div>
 
 <h2 id="diag">1 Diagnosis of the original Teensy</h2>
 <div class="tw"><table>
@@ -86,7 +87,7 @@ before it could damage the new board.</p>
 <tr><th>Stage</th><th>Result</th></tr>
 <tr><td>Spare on USB alone, bench</td><td class="good">Seen as COM7 (16C0:0483); firmware 5ec01a5 uploaded and booting (reports "BNO085 not responding",
 as expected with nothing connected)</td></tr>
-<tr><td>VIN–VUSB trace cut; fitted with only VIN and GND</td><td class="good">3.3 V present, no short, nothing warm</td></tr>
+<tr><td>VIN–VUSB trace cut attempted (pads later found still joined); fitted with only VIN and GND</td><td class="good">3.3 V present, no short, nothing warm</td></tr>
 <tr><td>BNO085 + XBee added</td><td class="good">XBee link both ways: <code>PING</code> → <code>PONG</code>, <code>STATUS</code>, ~2 Hz data rows on the ground-station dongle (COM5, 9600 baud)</td></tr>
 <tr><td>Encoders added</td><td class="good">A–C count correctly (below); D read nothing (loose lead, section 4)</td></tr>
 <tr><td>Motor switch on, table clamped</td><td class="good">All wheels drive with correct signs; Teensy stays cool; IMU data clean with motors running</td></tr>
