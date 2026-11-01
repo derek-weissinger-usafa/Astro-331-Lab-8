@@ -25,6 +25,16 @@
 // While it runs, main.cpp's supervisor uses kSlewMaxTiltDeg (25 deg) instead of kMaxTiltDeg: the
 // bubble has no top, so the table is kept under 25 deg.
 //
+// YAW-ONLY mode (SLEW YAW, 2026-10-31): the stretch test as this pendulous table can do it. Every
+// degree away from the rest tilt costs ~11 mN m of wheel torque, so tilted targets fill the wheels in
+// under a second, and even SLEW TEST with yaw-only targets at a fixed roll/pitch stopped after 13.5 s
+// (the rest tilt moves ~0.3 deg with heading). Here only yaw follows the slew profile (rotation about
+// the vertical: the shortest path between attitudes that differ only in heading); the roll/pitch
+// reference is the measured tilt every step, so those axes are only damped (as DEMO LEVEL) and the
+// table stays at its rest tilt. Targets: the yaw of each SLEW target (roll/pitch ignored). Roll/pitch
+// errors are measured from the rest tilt (a kDemoRestAvgS low-pass of the measured tilt), so they
+// show how still the table holds; yaw error is from the target heading.
+//
 // Conventions as frames.h: q is inertial->body; reference rates are body rates in the REFERENCE
 // body frame (the controller rotates them into the current body frame), as in demo_spin.h.
 // Errors are 3-2-1 Euler differences (deg): estimate minus target, yaw wrapped to +/-180.
@@ -42,6 +52,7 @@ class SlewTest {
     float settleS = 0;        // time from end of slew to settled (s)
     Vec3 maxErrDeg{0, 0, 0};  // worst |roll|, |pitch|, |yaw| error during the hold
     bool pass = false;
+    float restRollDeg = 0, restPitchDeg = 0;  // yaw-only: rest tilt at the end of the hold
   };
 
   SlewTest();
@@ -51,7 +62,7 @@ class SlewTest {
   bool setTarget(int i, float rollDeg, float pitchDeg, float yawDeg);
   const Target& target(int i) const { return targets_[i]; }
 
-  void start(const Quat& qNow);
+  void start(const Quat& qNow, bool yawOnly = false);
   Event step(float dt, const Quat& qEst);
   void abort() { phase_ = Phase::Off; }
 
@@ -59,6 +70,7 @@ class SlewTest {
   Phase phase() const { return phase_; }
   char phaseChar() const;     // - off, S slew, W settle (waiting), H hold, D done (holding last target)
   bool done() const { return phase_ == Phase::Done; }
+  bool yawOnly() const { return yawOnly_; }
   int index() const { return idx_; }  // current target, 0-based
   int passCount() const;
   const Result& result(int i) const { return results_[i]; }
@@ -76,10 +88,17 @@ class SlewTest {
   void beginSlew(const Quat& qFrom);
   Quat targetQuat(int i) const;
   void updateError(const Quat& qEst);
+  Event advance(float dt);  // phase logic (errDeg_ already updated)
+  // Yaw-only reference: measured tilt (roll, pitch) at heading yaw, turning at yawRate / yawAcc
+  // about the vertical (body rates of a 3-2-1 yaw rate with no roll/pitch rate).
+  void setYawRef(float roll, float pitch, float yaw, float yawRate, float yawAcc);
 
   Target targets_[kMaxTargets];
   Result results_[kMaxTargets];
   Phase phase_ = Phase::Off;
+  bool yawOnly_ = false;
+  float yawFrom_ = 0, dYaw_ = 0;          // yaw-only: slew start heading and turn (rad)
+  float rollRest_ = 0, pitchRest_ = 0;    // yaw-only: low-passed measured tilt (rad)
   int idx_ = 0;
   float yaw0_ = 0;     // heading at start (rad); target yaws are relative to it
   float t_ = 0;        // time in the current phase (s)

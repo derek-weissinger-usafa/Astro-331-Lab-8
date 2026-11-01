@@ -12,6 +12,7 @@
 //                   (the behaviour MAGTEST_0001 ran with)
 //   --nokick        don't copy KICKs from the log (for a gyro-only reference line)
 //   --hard x,y,z    table hard iron to remove, uT (tools/hardiron_fit.py; firmware SET MAG_HX/HY/HZ)
+//   --room c1,s1,c2,s2  room distortion correction, deg (tools/mag_room_fit.py; SET MAG_C1/S1/C2/S2)
 //   --gyro-noise v / --accel-sigma v / --bias-walk v / --bias-walk-z v   EkfParams (attitude_ekf.h;
 //                   still the original placeholders) - try values on recorded runs
 //
@@ -58,11 +59,15 @@ int main(int argc, char** argv) {
   float sigma = params::kMagHeadingSigmaRad;
   bool noMag = false, predict = params::kMagPredictNewPatterns, noKick = false;
   Vec3 hard{params::kMagHardIronUt[0], params::kMagHardIronUt[1], params::kMagHardIronUt[2]};
+  float room[4] = {params::kMagRoomCorrDeg[0], params::kMagRoomCorrDeg[1], params::kMagRoomCorrDeg[2],
+                   params::kMagRoomCorrDeg[3]};
   EkfParams ep;
   bool epChanged = false;
   for (int i = 3; i < argc; i++) {
     if (!strcmp(argv[i], "--sigma") && i + 1 < argc) sigma = (float)atof(argv[++i]);
     else if (!strcmp(argv[i], "--hard") && i + 1 < argc && sscanf(argv[++i], "%f,%f,%f", &hard.x, &hard.y, &hard.z) == 3) {}
+    else if (!strcmp(argv[i], "--room") && i + 1 < argc &&
+             sscanf(argv[++i], "%f,%f,%f,%f", &room[0], &room[1], &room[2], &room[3]) == 4) {}
     else if (!strcmp(argv[i], "--gyro-noise") && i + 1 < argc) { ep.gyroNoise = (float)atof(argv[++i]); epChanged = true; }
     else if (!strcmp(argv[i], "--accel-sigma") && i + 1 < argc) { ep.accelSigma = (float)atof(argv[++i]); epChanged = true; }
     else if (!strcmp(argv[i], "--bias-walk") && i + 1 < argc) { ep.gyroBiasWalk = (float)atof(argv[++i]); epChanged = true; }
@@ -110,6 +115,7 @@ int main(int argc, char** argv) {
   aid.setEnabled(!noMag);
   aid.setPredictAlways(predict);
   aid.setHardIron(hard);
+  aid.setRoomCorrection(room);
   fprintf(out, "t_s,test_step,state,yaw_log_deg,yaw_replay_deg,mode_log,mode_replay,resid_replay_deg,bias_z_replay_deg_s\n");
 
   bool init = false;

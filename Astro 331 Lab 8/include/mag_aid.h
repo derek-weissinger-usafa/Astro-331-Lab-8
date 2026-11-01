@@ -73,6 +73,11 @@ class MagAid {
   // Table-fixed field (body frame, uT) removed before anything else. A change invalidates every
   // reference (they were learned with the old offset); they are re-learned as the states recur.
   void setHardIron(const Vec3& h);
+  // Room distortion (SET MAG_C1/S1/C2/S2, tools/mag_room_fit.py): the horizontal field's direction
+  // in the body frame, theta, reads e(theta) = c1 cos th + s1 sin th + c2 cos 2th + s2 sin 2th too
+  // far (deg) at this spot; the field is rotated back by -e before use. Like a hard-iron change,
+  // a new value invalidates the learned references.
+  void setRoomCorrection(const float coefDeg[4]);
   Vec3 hardIron() const { return hard_; }
 
  private:
@@ -82,9 +87,12 @@ class MagAid {
   Vec3 correct(const Vec3& m, const float speed[4], const bool enabled[4]) const;
   int nearestSpinRef(int pattern, const bool enabled[4]) const;
 
-  bool enabled_ = true;
+  bool enabled_ = params::kMagAidDefaultOn;
   bool predictAlways_ = params::kMagPredictNewPatterns;
   Vec3 hard_{0, 0, 0};
+  float room_[4] = {0, 0, 0, 0};  // room distortion coefficients, rad
+  Vec3 roomCorrect(const Vec3& c) const;
+  void invalidateRefs();  // field model changed: learned references no longer apply
   int predicted_ = 0;
   Mode mode_ = Mode::Off;
   Vec3 lp_{0, 0, 0};

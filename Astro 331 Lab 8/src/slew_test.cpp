@@ -33,12 +33,17 @@ bool SlewTest::setTarget(int i, float rollDeg, float pitchDeg, float yawDeg) {
 }
 
 Quat SlewTest::targetQuat(int i) const {
+  if (yawOnly_) return qFromEuler321(rollRest_, pitchRest_, yaw0_ + targets_[i].yawDeg * kDegToRad);
   return qFromEuler321(targets_[i].rollDeg * kDegToRad, targets_[i].pitchDeg * kDegToRad,
                        yaw0_ + targets_[i].yawDeg * kDegToRad);
 }
 
-void SlewTest::start(const Quat& qNow) {
-  yaw0_ = qToEuler321(qNow).z;
+void SlewTest::start(const Quat& qNow, bool yawOnly) {
+  yawOnly_ = yawOnly;
+  const Vec3 e0 = qToEuler321(qNow);
+  yaw0_ = e0.z;
+  rollRest_ = e0.x;
+  pitchRest_ = e0.y;
   idx_ = 0;
   elapsed_ = 0.0f;
   for (int i = 0; i < kMaxTargets; i++) results_[i] = Result();
@@ -48,7 +53,14 @@ void SlewTest::start(const Quat& qNow) {
 void SlewTest::beginSlew(const Quat& qFrom) {
   qFrom_ = qFrom;
   qTarget_ = targetQuat(idx_);
-  phi_ = qToRotVec(qmul(qTarget_, qconj(qFrom_)));  // shortest rotation (qToRotVec takes w >= 0)
+  if (yawOnly_) {
+    // Turn about the vertical by the shorter way round.
+    yawFrom_ = qToEuler321(qFrom_).z;
+    dYaw_ = wrapPi(yaw0_ + targets_[idx_].yawDeg * kDegToRad - yawFrom_);
+    phi_ = {0.0f, 0.0f, dYaw_};
+  } else {
+    phi_ = qToRotVec(qmul(qTarget_, qconj(qFrom_)));  // shortest rotation (qToRotVec takes w >= 0)
+  }
   const float ang = norm(phi_);
   // Cosine profile: peak rate = (pi/2) ang / T, peak acceleration = (pi^2/2) ang / T^2.
   const float tRate = (kPi / 2.0f) * ang / params::kSlewMaxRateRadS;
@@ -63,9 +75,23 @@ void SlewTest::beginSlew(const Quat& qFrom) {
   refW_ = refA_ = {0.0f, 0.0f, 0.0f};
 }
 
+void SlewTest::setYawRef(float roll, float pitch, float yaw, float yawRate, float yawAcc) {
+  refQ_ = qFromEuler321(roll, pitch, yaw);
+  // 3-2-1 kinematics with no roll/pitch rate: p = -psi' sin(th), q = psi' cos(th) sin(ph),
+  // r = psi' cos(th) cos(ph) (level: (0, 0, psi'), as DEMO SPIN's spin reference).
+  const Vec3 axis = {-sinf(pitch), cosf(pitch) * sinf(roll), cosf(pitch) * cosf(roll)};
+  refW_ = axis * yawRate;
+  refA_ = axis * yawAcc;
+}
+
 void SlewTest::updateError(const Quat& qEst) {
   const Vec3 e = qToEuler321(qEst);
   const Target& g = targets_[idx_];
+  if (yawOnly_) {
+    errDeg_ = {wrapPi(e.x - rollRest_) * kRadToDeg, wrapPi(e.y - pitchRest_) * kRadToDeg,
+               wrapPi(e.z - (yaw0_ + g.yawDeg * kDegToRad)) * kRadToDeg};
+    return;
+  }
   errDeg_ = {wrapPi(e.x - g.rollDeg * kDegToRad) * kRadToDeg, wrapPi(e.y - g.pitchDeg * kDegToRad) * kRadToDeg,
              wrapPi(e.z - (yaw0_ + g.yawDeg * kDegToRad)) * kRadToDeg};
 }
@@ -74,7 +100,31 @@ SlewTest::Event SlewTest::step(float dt, const Quat& qEst) {
   if (phase_ == Phase::Off) return Event::None;
   t_ += dt;
   elapsed_ += dt;
+  const Vec3 eNow = qToEuler321(qEst);
+  if (yawOnly_) {
+    float a = dt / params::kDemoRestAvgS;
+    if (a > 1.0f) a = 1.0f;
+    rollRest_ += (eNow.x - rollRest_) * a;
+    pitchRest_ += (eNow.y - pitchRest_) * a;
+  }
   updateError(qEst);
+  const Event ev = advance(dt);
+  if (yawOnly_ && phase_ != Phase::Off) {
+    // Roll/pitch reference = measured tilt (damping only); yaw from the profile or the target.
+    if (phase_ == Phase::Slew) {
+      const float x = kPi * t_ / T_;
+      const float s = 0.5f * (1.0f - cosf(x));
+      const float sd = (kPi / (2.0f * T_)) * sinf(x);
+      const float sdd = (kPi * kPi / (2.0f * T_ * T_)) * cosf(x);
+      setYawRef(eNow.x, eNow.y, yawFrom_ + s * dYaw_, sd * dYaw_, sdd * dYaw_);
+    } else {
+      setYawRef(eNow.x, eNow.y, yaw0_ + targets_[idx_].yawDeg * kDegToRad, 0.0f, 0.0f);
+    }
+  }
+  return ev;
+}
+
+SlewTest::Event SlewTest::advance(float dt) {
   const float tol = params::kSlewTolDeg;
   const bool within = fabsf(errDeg_.x) < tol && fabsf(errDeg_.y) < tol && fabsf(errDeg_.z) < tol;
 
@@ -122,6 +172,8 @@ SlewTest::Event SlewTest::step(float dt, const Quat& qEst) {
       if (fabsf(errDeg_.y) > r.maxErrDeg.y) r.maxErrDeg.y = fabsf(errDeg_.y);
       if (fabsf(errDeg_.z) > r.maxErrDeg.z) r.maxErrDeg.z = fabsf(errDeg_.z);
       if (t_ >= params::kSlewHoldS) {
+        r.restRollDeg = rollRest_ * kRadToDeg;
+        r.restPitchDeg = pitchRest_ * kRadToDeg;
         r.pass = r.settled && r.maxErrDeg.x <= tol && r.maxErrDeg.y <= tol && r.maxErrDeg.z <= tol;
         if (idx_ + 1 >= params::kSlewNumTargets) {
           phase_ = Phase::Done;  // results final; keep holding the last target until STOP

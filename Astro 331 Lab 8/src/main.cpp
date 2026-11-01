@@ -400,6 +400,11 @@ static void startDemo(CommandLink& from, bool levelOnly) {
 static void sayTarget(const char* head, int i) {
   const SlewTest::Target& g = slew.target(i);
   char msg[112];
+  if (slew.yawOnly()) {
+    snprintf(msg, sizeof(msg), "# %s %d: yaw %+.1f deg (rel. to start) at the rest tilt\n", head, i + 1, g.yawDeg);
+    sayAll(msg);
+    return;
+  }
   snprintf(msg, sizeof(msg), "# %s %d: roll %.1f pitch %.1f yaw %+.1f deg (yaw rel. to start)\n", head, i + 1,
            g.rollDeg, g.pitchDeg, g.yawDeg);
   sayAll(msg);
@@ -407,7 +412,15 @@ static void sayTarget(const char* head, int i) {
 
 static void reportSlewResult(int i) {
   const SlewTest::Result& r = slew.result(i);
-  char msg[128];
+  char msg[160];
+  if (slew.yawOnly()) {
+    snprintf(msg, sizeof(msg),
+             "# SLEW %d/%d %s: %s, max err yaw %.2f deg, roll %.2f pitch %.2f from the rest tilt (%.2f, %.2f) over %.0f s\n",
+             i + 1, params::kSlewNumTargets, r.pass ? "PASS" : "FAIL", r.settled ? "settled" : "NOT settled",
+             r.maxErrDeg.z, r.maxErrDeg.x, r.maxErrDeg.y, r.restRollDeg, r.restPitchDeg, params::kSlewHoldS);
+    sayAll(msg);
+    return;
+  }
   snprintf(msg, sizeof(msg), "# SLEW %d/%d %s: %s, max err roll %.2f pitch %.2f yaw %.2f deg over %.0f s\n", i + 1,
            params::kSlewNumTargets, r.pass ? "PASS" : "FAIL", r.settled ? "settled" : "NOT settled",
            r.maxErrDeg.x, r.maxErrDeg.y, r.maxErrDeg.z, params::kSlewHoldS);
@@ -421,7 +434,7 @@ static void sayNextSlew() {
   sayAll(msg);
 }
 
-static void startSlew(CommandLink& from) {
+static void startSlew(CommandLink& from, bool yawOnly) {
   if (state != State::Idle || demo.active()) {
     from.send("# SLEW REFUSED: not idle (wait for calibration / DISARM first)\n");
     return;
@@ -440,7 +453,7 @@ static void startSlew(CommandLink& from) {
   }
   if (!logger.sdActive()) logger.startFile("SLEW");
   ctrl.reset();
-  slew.start(ekf.quaternion());
+  slew.start(ekf.quaternion(), yawOnly);
   ctrl.setTrajectory(slew.refQ(), slew.refW(), slew.refA());
   for (int i = 0; i < kN; i++) {
     speedLoops[i].reset();
@@ -448,8 +461,8 @@ static void startSlew(CommandLink& from) {
   }
   state = State::Armed;
   char msg[96];
-  snprintf(msg, sizeof(msg), "# SLEW TEST START: %d targets, +/-%.1f deg, hold %.0f s%s%s\n", params::kSlewNumTargets,
-           params::kSlewTolDeg, params::kSlewHoldS, logger.sdActive() ? ", log " : "",
+  snprintf(msg, sizeof(msg), "# SLEW %s START: %d targets, +/-%.1f deg, hold %.0f s%s%s\n", yawOnly ? "YAW" : "TEST",
+           params::kSlewNumTargets, params::kSlewTolDeg, params::kSlewHoldS, logger.sdActive() ? ", log " : "",
            logger.sdActive() ? logger.fileName() : "");
   sayAll(msg);
   for (int i = 0; i < params::kSlewNumTargets; i++) sayTarget("SLEW target", i);
@@ -985,7 +998,10 @@ static void handleCommand(const Command& c, CommandLink& from) {
       startDemo(from, true);
       break;
     case Cmd::SlewTest:
-      startSlew(from);
+      startSlew(from, false);
+      break;
+    case Cmd::SlewYaw:
+      startSlew(from, true);
       break;
     case Cmd::SlewList:
       for (int i = 0; i < params::kSlewNumTargets; i++) sayTarget("SLEW target", i);
@@ -1276,7 +1292,9 @@ static void controlStep(float dt) {
   float nullBias = demo.active() ? demo.wheelBias() : params::kNullBiasRadS;
   // Heading holds (ARM, DEMO LEVEL): keep every wheel away from zero for the magnetometer aid.
   // That also keeps them turning for FAULT TEST, so it replaces the test's fixed bias.
-  const bool hold = all && tune::holdMinRadS > 0.0f && !slew.active() && (!demo.active() || demo.levelOnly());
+  // SLEW YAW holds roll/pitch at the rest tilt like DEMO LEVEL, so it gets the same bias.
+  const bool hold = all && tune::holdMinRadS > 0.0f && (!slew.active() || slew.yawOnly()) &&
+                    (!demo.active() || demo.levelOnly());
   if (hold) {
     nullBias = holdBias.update(spd, tune::holdMinRadS, tune::holdMaxPeak, dt);
   } else if (fault.wheelBias() > nullBias) {
@@ -1541,6 +1559,7 @@ void loop() {
       levelZeroN++;
     }
     s.v = toTable(s.v);
+    if (s.kind == ImuSample::Gyro) s.v.z *= tune::gyroScaleZ;  // yaw scale factor (kGyroScaleZ)
     if (s.kind == ImuSample::Gyro) {
       latestGyro = s.v;
       trackGyroSequence(s);
@@ -1564,6 +1583,7 @@ void loop() {
         bool magWheels[kN];
         for (int i = 0; i < kN; i++) magWheels[i] = wheelEnabled[i] || wheelDead[i];
         magAid.setHardIron({tune::magHard[0], tune::magHard[1], tune::magHard[2]});  // no-op unless SET changed it
+        magAid.setRoomCorrection(tune::magRoom);
         if (magAid.update(s.v, cnt, spd, magWheels, ekf.quaternion(), dtMag, mUse, ref))
           lastMagResult = ekf.updateMagYaw(mUse, ref, tune::magSigma);
       }

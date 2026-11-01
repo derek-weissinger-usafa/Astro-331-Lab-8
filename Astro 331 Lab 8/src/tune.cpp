@@ -19,6 +19,9 @@ float holdMaxPeak = params::kHoldBiasMaxPeakRadS;
 float magHard[3] = {params::kMagHardIronUt[0], params::kMagHardIronUt[1], params::kMagHardIronUt[2]};
 float imuRoll0Deg = params::kImuMountRollDeg;
 float imuPitch0Deg = params::kImuMountPitchDeg;
+float gyroScaleZ = params::kGyroScaleZ;
+float magRoom[4] = {params::kMagRoomCorrDeg[0], params::kMagRoomCorrDeg[1], params::kMagRoomCorrDeg[2],
+                    params::kMagRoomCorrDeg[3]};
 
 static uint32_t version_ = 0;
 
@@ -40,6 +43,11 @@ static const Param kParams[] = {
     {"MAG_HZ", &magHard[2], -100.0f, 100.0f, "mag hard iron z uT"},
     {"IMU_ROLL0", &imuRoll0Deg, -10.0f, 10.0f, "IMU roll with deck level, deg (then CALIBRATE)"},
     {"IMU_PITCH0", &imuPitch0Deg, -10.0f, 10.0f, "IMU pitch with deck level, deg (then CALIBRATE)"},
+    {"GYRO_SZ", &gyroScaleZ, 0.9f, 1.1f, "yaw gyro scale true/measured (then CALIBRATE)"},
+    {"MAG_C1", &magRoom[0], -30.0f, 30.0f, "room mag heading err cos th, deg"},
+    {"MAG_S1", &magRoom[1], -30.0f, 30.0f, "room mag heading err sin th, deg"},
+    {"MAG_C2", &magRoom[2], -30.0f, 30.0f, "room mag heading err cos 2th, deg"},
+    {"MAG_S2", &magRoom[3], -30.0f, 30.0f, "room mag heading err sin 2th, deg"},
 };
 
 int count() { return sizeof(kParams) / sizeof(kParams[0]); }

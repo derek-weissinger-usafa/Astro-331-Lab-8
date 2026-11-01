@@ -51,6 +51,8 @@ static Command parseLine(char* line) {
     char* a = strtok_r(nullptr, " \t,", &save);
     if (a && !strcmp(a, "TEST")) {
       c.cmd = Cmd::SlewTest;
+    } else if (a && !strcmp(a, "YAW")) {
+      c.cmd = Cmd::SlewYaw;
     } else if (a && !strcmp(a, "LIST")) {
       c.cmd = Cmd::SlewList;
     } else if (a && !strcmp(a, "SET")) {

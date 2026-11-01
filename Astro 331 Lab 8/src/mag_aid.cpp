@@ -66,6 +66,10 @@ int MagAid::nearestSpinRef(int pattern, const bool enabled[4]) const {
 void MagAid::setHardIron(const Vec3& h) {
   if (h.x == hard_.x && h.y == hard_.y && h.z == hard_.z) return;
   hard_ = h;
+  invalidateRefs();
+}
+
+void MagAid::invalidateRefs() {
   stopped_.valid = false;
   for (int k = 0; k < kSpinRefs; k++) spin_[k].valid = false;
   lpInit_ = false;
@@ -73,6 +77,22 @@ void MagAid::setHardIron(const Vec3& h) {
   learnS_ = 0.0f;
   learnN_ = 0;
   learnSum_ = {0, 0, 0};
+}
+
+void MagAid::setRoomCorrection(const float coefDeg[4]) {
+  bool same = true;
+  for (int k = 0; k < 4; k++) same = same && room_[k] == coefDeg[k] * kDegToRad;
+  if (same) return;
+  for (int k = 0; k < 4; k++) room_[k] = coefDeg[k] * kDegToRad;
+  invalidateRefs();
+}
+
+Vec3 MagAid::roomCorrect(const Vec3& c) const {
+  if (room_[0] == 0.0f && room_[1] == 0.0f && room_[2] == 0.0f && room_[3] == 0.0f) return c;
+  const float th = atan2f(c.y, c.x);
+  const float e = room_[0] * cosf(th) + room_[1] * sinf(th) + room_[2] * cosf(2.0f * th) + room_[3] * sinf(2.0f * th);
+  const float ce = cosf(e), se = sinf(e);
+  return {c.x * ce + c.y * se, -c.x * se + c.y * ce, c.z};  // rotate the horizontal part by -e
 }
 
 void MagAid::reset() {
@@ -135,7 +155,7 @@ bool MagAid::update(const Vec3& magRaw, const long counts[4], const float speed[
   const WheelState ws = still ? WheelState::Stopped : spinning_ ? WheelState::Spinning : WheelState::Gated;
 
   // Low-pass the corrected field (removes the shaft-rate and PWM-aliased noise).
-  const Vec3 c = correct(magRaw - hard_, speed, enabled);
+  const Vec3 c = roomCorrect(correct(magRaw - hard_, speed, enabled));
   if (!lpInit_) {
     lp_ = c;
     lpInit_ = true;

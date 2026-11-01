@@ -311,6 +311,80 @@ stand (z bias −0.0379 °/s), table floated, then two holds over the XBee; whee
   timeout were skipped by the EKF (rotation lost); the timeout is now 300 ms so they are integrated (uploaded).
   Root cause in the SD path still open.
 
+### 2.19 STEP TEST and first FAULT TEST on the air bearing (2026-10-31) — `DEMO_0007.CSV` (SD)
+Warm board, `CALIBRATE 180` clamped (z bias −0.0493 °/s), table floated, wheel bias 100 rpm.
+- **STEP TEST (requirement 1):** ±5° heading steps: rise 1.52–1.56 s, 0% overshoot, settle 1.79–1.90 s, final error
+  ≤ 0.12°, jitter ≤ 0.04° rms (baseline 0.010°). **Measured I_zz = 0.0776 kg·m²** (model 0.0623; `SET IZZ` for this
+  power-on, not yet in `control_params.h`). Yaw drag ≤ 0.07 mN·m.
+- **Truth check failed by eye:** after the last step back to 0 the table sat visibly off the tape marker, toward the first
+  step, while the estimate said 0.015°: a heading-estimate error (requirement 2). During the +5° step the magnetometer aid
+  showed a 3.9° residual (spinning-pattern mode). To analyse from the SD log (raw gyro vs estimate); laser pointer needed.
+- **FAULT TEST B (requirement 3) PASS:** wheel B made dead after 10 s of DEMO LEVEL; detected in 0.91 s, back within ±1° in
+  0.9 s (peak error 0.01/0.02/0.79° roll/pitch/yaw), 30 s hold max 0.70° yaw. Graded on the controller's own error, so it
+  inherits any heading-estimate error.
+
+### 2.20 Stretch requirement: SLEW TEST on the table, and SLEW YAW (2026-10-31)
+- **SLEW TEST with yaw-only targets** (45/135/−135/0°, roll/pitch fixed at the rest tilt −1.2/−0.2°): stopped on the wheel
+  limit 13.5 s into the first slew. Wheels A/C filled in opposite directions (roll momentum): the table wanted ~−1.5° roll at
+  that heading, and 0.3° of mismatch costs ~3 mN·m. Tilted targets (8–10°) would cost ~110 mN·m and fill the wheels in < 1 s.
+- **`SLEW YAW` (new, simulated, uploaded; not yet run on the table):** yaw follows the slew profile, roll/pitch are damped at the rest
+  tilt. Host simulation with the firmware code (`tools/slewsim/`): 4/4 PASS with 0–4 mN·m of room-fixed torque, peak wheel
+  16–34 rad/s. Same simulation, fixed-tilt SLEW TEST: wheel limit in target 4.
+
+### 2.21 Heading error explained: the table's hard iron (2026-10-31, `DEMO_0007.CSV`)
+- Gyro-only replay of the STEP TEST: the table really turned +5.9→+7.4°, then sat **+2.7°** off the start at the first "0"
+  (what was seen at the tape marker), −3.1→−4.5°, then +0.05–0.2° at the end. The magnetometer aid had pulled the estimate
+  2.9° (STEP TEST) and up to 8.6° while the table was turned by hand.
+- Circle fit of the horizontal field over a 376° free turn (wheels stopped, aid off): Earth's horizontal field 22.4 µT, and a
+  table-fixed field of **(+20.5, −48.9) µT**, 2.4× Earth's. Never calibrated before (fixed-table MAG TESTs can't see it).
+- Replay with it removed: STEP TEST pull 0.7°, hand turns 0.9°. Now `kMagHardIronUt` (uploaded). Still large around the
+  SLEW TEST (wheels near 75 rad/s, beyond the 31 rad/s the wheel-field model was mapped to).
+- `SLEW YAW` uploaded with it (not yet run on the table).
+
+### 2.22 SLEW YAW 4/4 PASS on the air bearing; wheel D (2026-10-31, `DEMO_0008.CSV`, `DEMO_0009.CSV`)
+- **STEP TEST rerun** (hard iron on, I_zz 0.0776): rise 1.22–1.66 s, overshoot 1–4%, settle 1.57–1.96 s, final error
+  ≤ 0.003°, jitter ≤ 0.03° rms; I_zz measured 0.0759. **Back on the tape marker at the first return to 0 by eye** (was
+  2.7° off before the hard-iron fix). I_zz 0.0768 (mean) now the firmware default (uploaded).
+- **`SLEW YAW` 4/4 PASS** (yaw +45, +135, −135, 0° from the start; 13.9 / 24.7 / 24.7 / 37.0 s slews, each reached
+  1.0 s after its slew): worst hold errors yaw 0.04–0.05°, roll 0.12–0.17°, pitch 0.06–0.08° from the rest tilt. Graded
+  on the estimate; truth only by eye so far (laser pending).
+- **Wheel D:** in DEMO_0008 it did not turn at all on three Armed starts (encoder steady, duty up to the 0.45 limit), so
+  those flags were correct; the first SLEW YAW stopped on the wheel limit because A/C had absorbed D's share. After the
+  wiring check and a power cycle, D spun normally (±0.3 duty ≈ 46–47 rad/s) and ran 4 DEMO LEVEL starts and the full
+  SLEW YAW without a flag. Intermittent: poor connection or a latched driver. If it recurs: spin-test before touching,
+  then cycle only the motor switch.
+
+### 2.23 SLEW YAW overshoot = yaw gyro scale factor (2026-10-31, `DEMO_0009.CSV`, `DEMO_0007.CSV`)
+- After SLEW YAW (4/4 PASS, 360° of slews in total) the table sat a few degrees past the tape marker. In DEMO_0009 the
+  aid was stale/gated and the z bias constant the whole run, so the estimate was pure gyro: the gyro itself under-read.
+- Magnetometer heading (hard iron removed, per-turn field centre) vs integrated gyro over two free turns in DEMO_0007
+  (378°, 342°): true/gyro = 1.0090 and 1.0085. Hand test against the marker (MAG OFF, 3 turns each way, XBee):
+  CCW 1060.4° read for 1080°, CW ~1050°, but with several degrees of alignment and creep uncertainty per leg.
+- Firmware: `kGyroScaleZ` = 1.009 applied to every gyro z sample (`SET GYRO_SZ` to adjust; uploaded with I_zz 0.0768).
+
+### 2.24 Presentation spot: magnetometer distorted; demos gyro-only (2026-10-31, `SLEW_0001.CSV`)
+- Table moved to the presentation spot. `SLEW YAW` 4/4 PASS again (worst yaw 0.03–0.13°); with the 1.009 gyro scale it
+  ended slightly short of the tape marker (before: a few degrees past), so the true scale is ~1.006–1.009.
+- Field here: Earth's horizontal component 15.4–15.8 µT (old spot 22.4) and a heading error that depends on the table's
+  heading: 6–9° p-p with a free circle centre (old spot 1.9°), 37–40° p-p against the firmware's hard iron with the wheels
+  stopped (stopped motor shafts add a ~5 µT offset that changes every time the wheels stop).
+- Room-distortion correction written (`MagAid::setRoomCorrection`, `SET MAG_C1/S1/C2/S2`, `tools/mag_room_fit.py`,
+  replay `--room`; uploaded, coefficients 0). Spinning-wheel calibration turns (null pattern ±100 rpm, MAG OFF, 100 Hz SD log,
+  0.5 s smoothing, firmware wheel model): 14.2° p-p uncorrected, 2.0° in-sample, but only 3.5° / 5.3° when fitted on one
+  turn direction and tested on the other. Stopped-wheel fits have entirely different coefficients and don't carry over.
+- **Decision for the presentation runs: magnetometer aid off** (now the firmware default, `kMagAidDefaultOn` = false, uploaded with the room-correction code at 0; `MAG ON` to use it). After a warm `CALIBRATE 180` with the yaw
+  scale corrected, gyro-only heading drifts ~3 °/h (< 0.2° over a few minutes), better than the aid's ±2–2.5° here.
+  Spinning-wheel correction if long holds need the aid: c1 −7.64, s1 +1.82, c2 +0.37, s2 −0.15 deg.
+
+### 2.25 SLEW YAW gyro-only at the presentation spot: on the marker (2026-10-31, `SLEW_0002.CSV`)
+- Aid off by default, gyro scale 1.009, I_zz 0.0768, 5 min warm-up + `CALIBRATE 180` (z bias −0.0431 °/s).
+- **`SLEW YAW` 4/4 PASS**, each target reached 1.0 s after its slew; worst hold errors yaw 0.03–0.05°, roll 0.10–0.16°,
+  pitch 0.09–0.12° from the rest tilt. **After 360° of slews the table ended dead on the tape marker** (by eye), the first
+  run where the true heading matched at the end (before the hard-iron fix: 2.7° off after a 5° step; before the gyro scale:
+  a few degrees past after 360°; with the magnetometer aid at this spot: slightly short).
+- Requirement 2 still needs a measured truth (laser) rather than a visual check.
+- **Write-up of 10-30/31 with figures, simulation methods and sim-vs-table comparison:** `Reports/Lab8_Writeup_2026-10-30_31.html` (figures made by `Reports/figures/writeup_2026-10-31/make_figs.py`).
+
 ## 3. Open issues (details and owners in `TODO.md`)
 - **Wheel D's encoder connection is intermittent** (reseated twice 2026-10-30): solder/crimp + strain relief.
 - **Table balance / pendulum** (§2.7, §2.18): blocks levelling and tilted slews; requirements 1–3 work at the rest tilt.

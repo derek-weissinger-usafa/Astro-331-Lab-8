@@ -10,7 +10,9 @@ namespace params {
 // ---- Plant ----
 // Table: working MODEL until measured. Hollow PLA cube (15 in side, 1 in wall) scaled uniformly
 // to 5 kg => ~8.9 in side, 0.59 in wall, I = m a^2/6 shell => 0.0623 kg m^2 about each axis.
-constexpr float kBodyInertia[3] = {0.0623f, 0.0623f, 0.0623f};  // kg m^2, about body x, y, z
+// z MEASURED 2026-10-31 by STEP TEST on the air bearing (momentum exchange, CAD wheel J): 0.0776 and
+// 0.0759 kg m^2 in two runs (DEMO_0007/0008). x, y still the model (swing fits suggest more).
+constexpr float kBodyInertia[3] = {0.0623f, 0.0623f, 0.0768f};  // kg m^2, about body x, y, z
 // Wheel: from CAD "CAD files V2/ReactionWheel V2.f3d", aluminium 2700 kg/m^3: 161 g, rim
 // r 4-5 cm x 1.9 cm (97% of J), 4 mm hub plate, four 8 mm spokes.
 // TODO (rotor momentum): the motor rotor spins 6.25x faster than the wheel and adds roughly
@@ -126,6 +128,14 @@ constexpr uint32_t kMagMapStepMs = 20000;  // hold per step (ramp ~1-2 s + settl
 // level calibrated by reversal. Re-measured ~1.5 h later (pitch had moved 1.1 deg: the glue was still
 // creeping; first value 3.649 / -1.033). Re-check with the phone level once it has cured, and if the IMU
 // is ever remounted.
+// Yaw gyro scale factor (true rate / BNO085 rate), applied to every gyro z sample in the table frame
+// (main.cpp, before calibration, the EKF and the log). Measured 2026-10-31 against the magnetometer
+// heading (hard iron removed) over two free turns in DEMO_0007 (378 and 342 deg, aid off): 1.0090
+// and 1.0085 (also 1.0100 on a sub-span). Without it a full turn read ~3.5 deg short: SLEW YAW
+// ended "a few degrees" past the marker after 360 deg of slews (DEMO_0009). A hand test against the
+// tape marker (3 turns each way) gave 2-3% but with several degrees of alignment/creep uncertainty.
+// SET GYRO_SZ tries another value (then CALIBRATE).
+constexpr float kGyroScaleZ = 1.009f;
 constexpr float kImuMountRollDeg = 3.611f;
 constexpr float kImuMountPitchDeg = -2.164f;
 constexpr float kLevelZeroS = 5.0f;  // LEVEL ZERO averaging time
@@ -172,9 +182,23 @@ constexpr float kMagHorizTolFrac = 0.15f;   // gate if the horizontal field stre
 // Heading noise fed to the EKF per sample (100 Hz). Deliberately large: the low-passed samples are
 // strongly correlated, and the aid should only remove slow gyro drift (~30 s time constant).
 constexpr float kMagHeadingSigmaRad = 0.3f;
-// Table hard iron (body frame, uT), removed before the field is used. Not fitted yet: needs a yaw
-// turn on the air bearing (tools/hardiron_fit.py); SET MAG_HX/HY/HZ tries a value without an upload.
-constexpr float kMagHardIronUt[3] = {0.0f, 0.0f, 0.0f};
+// Table hard iron (body frame, uT), removed before the field is used; SET MAG_HX/HY/HZ tries a value
+// without an upload. Fitted 2026-10-31 from DEMO_0007: circle fit of the horizontal field over a
+// 376 deg free turn with the wheels stopped and the aid off -> centre (+20.5, -48.9), radius 22.4 uT
+// (Earth's horizontal field). The table's own field is 2.4x Earth's horizontal, so without this any
+// turn bent the aided heading (STEP TEST: 2.9 deg, hand turns: 8.6 deg; replayed with it: 0.7 / 0.9).
+// A second turn (shafts at other positions) gave x +14.5: stopped motors shift it by a few uT. z is
+// not observable from yaw turns (left 0; the aid uses the horizontal field at small tilt).
+constexpr float kMagHardIronUt[3] = {20.5f, -48.9f, 0.0f};
+// Room distortion at the table's spot (deg; mag_aid.h setRoomCorrection, tools/mag_room_fit.py):
+// heading error of the field direction theta: c1 cos th + s1 sin th + c2 cos 2th + s2 sin 2th.
+// 0 = none (the first spot measured 1.9 deg p-p; the presentation spot 6-9 deg p-p, 2026-10-31).
+// SET MAG_C1/S1/C2/S2 tries values without an upload; re-fit whenever the table or room changes.
+constexpr float kMagRoomCorrDeg[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+// Magnetometer aid at boot. OFF since 2026-10-31: at the presentation spot the field is distorted
+// (heading error +-2-2.5 deg even after a room correction, PROGRESS_LOG 2.24), worse than the gyro
+// alone over a demo (~3 deg/h after a warm CALIBRATE 180). MAG ON turns it on (needed for MAG TEST).
+constexpr bool kMagAidDefaultOn = false;
 
 // ---- IMU sample-loss diagnostics ----
 constexpr float kImuGapMs = 15.0f;  // gyro interval above this (nominal 10 ms) counts as a gap
