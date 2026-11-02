@@ -84,7 +84,10 @@ disables a wheel automatically. Raw data: `test_runs/MAGCAL_2026-10-27_t1..t4_*.
       `drop=` stays 0 over a long log.
 - ~~Move the magnetometer away from the wheels~~ — **not possible (team decision, 2026-10-31)**: the IMU stays where it
       is, so the 0.3–1.2° per-new-pattern reference error is a fixed limit; keep pattern changes few during holds.
-- [ ] 📊 **Update the final presentation for MAGTEST_0002 (deferred by the team, 2026-10-31).** Slides 4, 20 and 27 and the
+- [x] 📊 **Final presentation rebuilt 2026-11-02** (51 slides, everything since the prelim, ending in DEMO ALL; MAG TEST
+      shown with both runs). Builder: `Reports/deck_builder/build_final_v2.py` (starts from the 10-31 deck, reuses
+      `build_deck.py`'s helpers); new figures `Reports/figures/final_2026-11-02/`. Next: the team cuts it to length.
+- [x] ~~📊 **Update the final presentation for MAGTEST_0002 (deferred by the team, 2026-10-31).**~~ Slides 4, 20 and 27 and the
       notes on slide 4 still say the current firmware replays 37/37 with predicted references, and `fig9_magtest.png` shows
       that as the gold "current firmware" line. Rework them to show both runs (run 1 36/37 learned; run 2 10/15 predicted;
       replays both ways) and the learning default. Builder: scratchpad `deck/build_deck.py` + `make_magtest_fig2.py`
