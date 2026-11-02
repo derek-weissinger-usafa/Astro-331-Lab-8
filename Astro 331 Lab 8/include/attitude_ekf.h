@@ -35,6 +35,12 @@ struct EkfParams {
   // z bias is not observable from gravity when level and is only weakly (and wrongly) pulled by
   // the accelerometer when tilted, so by default it comes only from the static calibration.
   bool lockZBias = true;
+  // The accelerometer carries no heading, but while the table turns the filter's yaw error becomes
+  // correlated with its tilt error, so the full gain also rotated the estimate about the vertical:
+  // ~1% of every turn was removed (2026-11-01: EKF yaw 360 deg vs gyro 363-364 deg over a full
+  // SLEW YAW, laser 361.8-362.3). With this set, the attitude gain's component along the measured
+  // vertical is removed: accelerometer updates correct roll/pitch only.
+  bool accelNoHeading = true;
   float accelSigma = 0.036f;      // unit-vector noise (~0.35 m/s^2 datasheet accuracy / g)
   float accelGateG = 0.15f;       // reject accel update if | |a| - 1 g | exceeds this
   float accelInflateG = 0.05f;    // R is scaled by 1 + (dev / this)^2 as |a| departs from 1 g

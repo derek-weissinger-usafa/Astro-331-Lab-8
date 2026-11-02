@@ -93,6 +93,15 @@ AccelResult AttitudeEKF::updateAccel(const Vec3& accel) {
   // stays a valid covariance for this (deliberately suboptimal) gain.
   if (p_.lockZBias)
     for (int j = 0; j < 3; j++) K(5, j) = 0.0f;
+  // No heading from gravity: project the attitude rows of K onto the plane perpendicular to the
+  // vertical (yhat, body frame), K_att <- (I - yhat yhat^T) K_att (EkfParams::accelNoHeading).
+  if (p_.accelNoHeading) {
+    const float v[3] = {yhat.x, yhat.y, yhat.z};
+    for (int j = 0; j < 3; j++) {
+      const float along = v[0] * K(0, j) + v[1] * K(1, j) + v[2] * K(2, j);
+      for (int i = 0; i < 3; i++) K(i, j) -= along * v[i];
+    }
+  }
 
   // Error-state correction
   float dx[6];

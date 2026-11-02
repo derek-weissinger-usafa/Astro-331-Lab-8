@@ -58,11 +58,26 @@ bool DataLogger::startFile(const char* prefix) {
     return false;
   }
 
+  // Write the header now, padded with a '#' comment line to whole sectors, and flush: the card's
+  // first write to a new file searches the FAT for free space, which blocked loop() for up to
+  // ~0.5 s. The callers start logging just before arming, so done in service() that stall landed
+  // in the first second of every first run after a boot (2026-11-01: the wheel loop then saw one
+  // huge step, flagged every wheel dead and left some at full speed). Here the wheels are still
+  // stopped. The padding keeps the file position sector-aligned for service().
   const size_t h = sizeof(kHeader) - 1;
+  const size_t padded = (h + 2 + kSector - 1) / kSector * kSector;
   memcpy(buf_, kHeader, h);
-  len_ = h;
+  buf_[h] = '#';
+  memset(buf_ + h + 1, ' ', padded - h - 2);
+  buf_[padded - 1] = '\n';
+  len_ = padded;
   dropped_ = 0;
   sd_ = true;
+  if (!writeOut(padded)) {
+    failSd();
+    return false;
+  }
+  file_.flush();
   lastFlushMs_ = millis();
   return true;
 }

@@ -23,6 +23,10 @@
 //                  level indefinitely with no spin and no wheel bias, until STOP / KILL / a
 //                  wheel reaches kDemoWheelAbortRadS. Reports when level is reached and how
 //                  long it was held. From Idle only, wheels stopped; logs DEMO_####.CSV.
+//   DEMO ALL [s] [A-D]  the whole demonstration in one armed run (full_demo.h): heading hold graded
+//                  for s seconds once settled (default kFullHoldS = 60), then SLEW YAW from the held
+//                  heading, then wheel X (default B) fails kFaultDelayS after the slews (FAULT TEST
+//                  grading); summary, then holds until STOP. Idle, all 4 wheels, wheels stopped.
 //   STOP           controlled end of the demo (spin down from the current rate); KILL is the
 //                  emergency stop (brakes the wheels, which also stops the table abruptly)
 //   CALIBRATE [s]  redo the static gyro-bias calibration (Idle only; keep still). Optional
@@ -72,7 +76,7 @@
 //   RAW ON | RAW OFF  USB only in practice: stream one raw row per magnetometer sample (~100 Hz)
 //                  instead of the 20 Hz estimator CSV (magnetometer calibration data, see main.cpp)
 enum class Cmd : uint8_t { None, Arm, Disarm, Kill, Status, Ping, Test, Speed, Counts, Zero,
-                           BeginStatic, DemoSpin, DemoLevel, Stop, Calibrate, MagMap, MagTest, RawOn, RawOff, Wheel, MagAidOn, MagAidOff, Kick, Bias, Set, Get, StepTest, LevelZero, SlewTest, SlewYaw, SlewTilt, SlewSet, SlewTSet, SlewList, FaultTest, FaultClear, Unknown };
+                           BeginStatic, DemoSpin, DemoLevel, DemoAll, Stop, Calibrate, MagMap, MagTest, RawOn, RawOff, Wheel, MagAidOn, MagAidOff, Kick, Bias, Set, Get, StepTest, LevelZero, SlewTest, SlewYaw, SlewTilt, SlewSet, SlewTSet, SlewList, FaultTest, FaultClear, Unknown };
 
 struct Command {
   static constexpr int kAllWheels = 4;

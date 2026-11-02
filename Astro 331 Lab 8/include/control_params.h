@@ -74,6 +74,9 @@ constexpr float kEncoderSign[4] = {-1.0f, -1.0f, -1.0f, -1.0f};  // + count -> +
 // Gains scaled by 100/160 when the encoder scaling was corrected (2026-10-15): speeds now read
 // 1.6x larger, so this keeps the same loop behavior as the 2026-10-15 bench tests.
 constexpr float kSpeedLoopHz = 100.0f;
+// A wheel-loop step longer than this means loop() was blocked (SD card): the fault checks skip
+// that step and the speed loop uses a normal step (main.cpp wheelLoop; 2026-11-01 start failures).
+constexpr float kWheelLoopStallS = 0.05f;
 constexpr float kSpeedKp = 0.0056f;      // duty per rad/s
 constexpr float kSpeedKi = 0.028f;       // duty per (rad/s) per s
 constexpr float kSpeedIntegralClamp = 0.3f;  // duty
@@ -135,7 +138,12 @@ constexpr uint32_t kMagMapStepMs = 20000;  // hold per step (ramp ~1-2 s + settl
 // ended "a few degrees" past the marker after 360 deg of slews (DEMO_0009). A hand test against the
 // tape marker (3 turns each way) gave 2-3% but with several degrees of alignment/creep uncertainty.
 // SET GYRO_SZ tries another value (then CALIBRATE).
-constexpr float kGyroScaleZ = 1.009f;
+// 2026-11-01 night: re-fitted at 1.0045 after removing the accelerometer update's heading leak
+// (EkfParams::accelNoHeading): the leak took ~1% off every turn, so 1.009 had been compensating part
+// of it, unreliably (full-turn SLEW YAW laser errors -0.1 to +2.3 deg). Replaying DEMO_0015/0018
+// through the fixed EKF against the laser (CCW +2.28 / +1.7, CW -1.80 deg over 360 deg) gives
+// 1.0044-1.0047, residual ~0.2-0.45 deg per run (z bias). Re-check with one laser SLEW YAW.
+constexpr float kGyroScaleZ = 1.0045f;
 constexpr float kImuMountRollDeg = 3.611f;
 constexpr float kImuMountPitchDeg = -2.164f;
 constexpr float kLevelZeroS = 5.0f;  // LEVEL ZERO averaging time
@@ -354,5 +362,17 @@ constexpr float kFaultRecoverMaxS = 10.0f;
 constexpr float kFaultHoldS = 30.0f;
 constexpr float kFaultWheelBiasRadS = 10.47f;  // 100 rpm
 constexpr float kFaultMinWheelRadS = 3.0f;
+
+// ---- DEMO ALL: requirements 1, 2 / stretch and 3 in one armed run (full_demo.h) ----
+// Part 1 holds for kFullHoldS (DEMO ALL <s> overrides, kFullHoldMinS..kFullHoldMaxS) once settled.
+// Wheel momentum is the budget: yaw drag fills the wheels for the whole run (~5 min to a wheel at
+// 65 rad/s in the 11-01 hold), so the default hold is kept short. Part 3 fails kFullFaultWheel
+// kFaultDelayS after the slews end, then grades as FAULT TEST.
+constexpr float kFullHoldS = 60.0f;
+constexpr float kFullHoldMinS = 10.0f;
+constexpr float kFullHoldMaxS = 600.0f;
+constexpr float kFullHoldTolDeg = 1.0f;   // requirement 1 graded on the estimate: |heading error| <= this
+constexpr float kFullDriftWinS = 10.0f;   // drift = mean error over the last window - the first
+constexpr int kFullFaultWheel = 1;        // B (passed FAULT TEST on the table)
 
 }  // namespace params

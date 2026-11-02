@@ -135,11 +135,11 @@ Quat SlewTest::targetQuat(int i) const {
                        yaw0_ + targets_[i].yawDeg * kDegToRad);
 }
 
-void SlewTest::start(const Quat& qNow, Mode mode, float gravK) {
+void SlewTest::start(const Quat& qNow, Mode mode, float gravK, float yaw0Rad) {
   mode_ = mode;
   gravK_ = gravK;
   const Vec3 e0 = qToEuler321(qNow);
-  yaw0_ = e0.z;
+  yaw0_ = isnan(yaw0Rad) ? e0.z : yaw0Rad;
   rollRest_ = e0.x;
   pitchRest_ = e0.y;
   idx_ = 0;

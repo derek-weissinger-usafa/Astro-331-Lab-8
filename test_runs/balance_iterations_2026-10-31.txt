@@ -457,3 +457,58 @@ NOTE  D group back in ~30 mm: roll +0.45, pitch -2.30. STOPPED here (roughly lev
       (B group ~53 mm, D ~45-48 mm), washers CD 7, AD 1, BC 1 (7 g), AB 0; 48 g brackets and the 126 g top weight off;
       laser on. CG ~3 mm below the pivot (swing ~6.2 s, k ~0.15 N m/rad).
 
+
+NOTE  2026-11-01 evening: table found resting at ~pitch -25, roll +8 (near the stop) after dinner, cause unknown.
+      Reconfigured: both top screws + nuts OFF; washers AB 3, BC 1, CD 3, AD 2; laser on; no 126 g. Swing fit at the tape marker:
+
+2026-11-01 18:21:59  (118 rows, 59 s)
+roll: period  3.18 s, swing 1.76 deg, rest +1.98 deg, fit rms 0.15
+pitch: period  3.19 s, swing 1.58 deg, rest -1.31 deg, fit rms 0.13
+centre of mass 10.87 mm below the bearing centre (10.89 roll / 10.84 pitch), off-centre x -0.249 mm, y -0.375 mm
+  level x:   1268 g mm = 20 g by  63.4 mm toward +x (toward wheel A)
+  level y:   1912 g mm = 20 g by  95.6 mm toward +y (toward wheel B)
+  raise:  55419 g mm to reach the bearing centre (a mass dm added h above it raises the CG by ~dm h / m)
+
+NOTE  Swing 3.18/3.19 s, CG 10.9 mm. Moved 1 washer CD -> AB and 1 AD -> AB (confirmed later from the washer count):
+      AB 5, BC 1, CD 2, AD 1. Predicted rest roll ~+0.2, pitch ~-0.4. Tape marker.
+
+2026-11-01 18:25:20  DEMO LEVEL rest tilt: roll +3.03 deg, pitch +2.34 deg, yaw  +172.5 deg   (# DEMO LEVEL STOPPED: armed 13.7 s, rest tilt held 5.4 s, roll 3.07 pitch 2.24 deg)
+
+2026-11-01 18:25:37  DEMO LEVEL rest tilt: roll +3.03 deg, pitch +2.44 deg, yaw  +167.1 deg   (# DEMO LEVEL STOPPED: armed 14.0 s, rest tilt held 5.5 s, roll 3.11 pitch 2.38 deg)
+
+NOTE  DEMO LEVEL after the moves: roll +3.03/+3.03, pitch +2.34/+2.44 (predicted +0.2/-0.4). Swing fit, no further changes
+      (the two methods agree below; the moves gave roll +1.0, pitch +3.5 against a predicted -1.8 / +0.9):
+
+2026-11-01 18:27:35  (116 rows, 59 s)
+roll: period  3.44 s, swing 1.07 deg, rest +2.94 deg, fit rms 0.45
+pitch: period  3.67 s, swing 4.92 deg, rest +1.98 deg, fit rms 0.31
+centre of mass 8.79 mm below the bearing centre (9.36 roll / 8.21 pitch), off-centre x +0.303 mm, y -0.450 mm
+  level x:   1545 g mm = 20 g by  77.2 mm toward -x (toward wheel C)
+  level y:   2295 g mm = 20 g by 114.8 mm toward +y (toward wheel B)
+  raise:  44809 g mm to reach the bearing centre (a mass dm added h above it raises the CG by ~dm h / m)
+  WARNING: poor fit (> 0.4 deg rms): the table was probably touched or turning; repeat the swing.
+
+
+NOTE  Moved 1 AD -> BC and 1 CD -> BC: washers now AB 5, BC 3, CD 1, AD 0. From roll +3.0 / pitch +2.2,
+      diagonal-seat model predicts roll ~+1.0, pitch ~+1.2. Tape marker, DEMO LEVEL:
+
+2026-11-01 18:30:57  DEMO LEVEL rest tilt: roll -1.92 deg, pitch -1.76 deg, yaw  -167.0 deg   (# DEMO LEVEL STOPPED: armed 8.5 s, rest tilt held 5.5 s, roll -2.31 pitch -1.96 deg)
+
+2026-11-01 18:31:11  DEMO LEVEL rest tilt: roll -2.10 deg, pitch -1.77 deg, yaw  -168.4 deg   (# DEMO LEVEL STOPPED: armed 11.3 s, rest tilt held 5.7 s, roll -2.27 pitch -1.94 deg)
+
+NOTE  Result: roll -1.92/-2.10, pitch -1.76/-1.77 (from +3.0/+2.2: -5.0/-4.0 against a predicted -2.0/-1.0). Responses to
+      washer moves tonight are 2-4x the swing-fit sensitivity and the y response flipped sign between the two moves;
+      readings were ~25 deg apart in heading. Rest tilt ~2.7 deg total, within what SLEW YAW / DEMO LEVEL ran at before.
+
+NOTE  Last change: 1 washer BC -> CD. Washers now AB 5, BC 2, CD 2, AD 0. Predicted (tonight's response) roll ~+0.8,
+      pitch ~-1.8. Tape marker, DEMO LEVEL:
+
+2026-11-01 18:33:25  DEMO LEVEL rest tilt: roll -2.45 deg, pitch +0.11 deg, yaw  -162.5 deg   (# DEMO LEVEL STOPPED: armed 9.6 s, rest tilt held 5.5 s, roll -2.46 pitch 0.25 deg)
+
+2026-11-01 18:33:37  DEMO LEVEL rest tilt: roll -2.49 deg, pitch +0.12 deg, yaw  -162.7 deg   (# DEMO LEVEL STOPPED: armed 10.1 s, rest tilt held 5.7 s, roll -2.52 pitch 0.20 deg)
+
+NOTE  Result: roll -2.45/-2.49, pitch +0.11/+0.12. The BC -> CD move (pure -y on the diagonal-seat model) showed up
+      mostly in PITCH (+1.9) with roll -0.4, as the 10-31 CD move did: the seat-to-axis mapping assumed here is probably
+      wrong (rotated ~90 deg?). STOPPED here. FINAL tonight: no top screws/nuts/126 g, laser on, washers AB 5, BC 2,
+      CD 2, AD 0; swing ~3.2-3.6 s, CG ~9-11 mm; rest tilt at the tape marker roll -2.5, pitch +0.1.
+

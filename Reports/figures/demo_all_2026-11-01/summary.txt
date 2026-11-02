@@ -1,0 +1,6 @@
+log test_runs/DEMO_0020.CSV, armed rows 0-32128 (323 s)
+part 1 hold: 60.0 s graded, heading error max 0.040 deg, rms about mean 0.0109 deg, mean -0.0068 deg; laser -0.05 deg
+part 2 slews: target 1 max |yaw err| 0.03 deg (controller), target 2 max |yaw err| 0.02 deg (controller), target 3 max |yaw err| 0.13 deg (controller), target 4 max |yaw err| 0.05 deg (controller)
+part 2 laser: -0.05 before, +0.02..-0.03 after the 360 deg turn => +0.045 deg
+part 3 fault: injected at 203.0 s, detected 0.50 s later
+part 3 peak |err| roll 0.01 pitch 0.02 yaw 0.90 deg; laser peak -0.31, steady -0.18

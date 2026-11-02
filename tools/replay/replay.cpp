@@ -15,6 +15,10 @@
 //   --room c1,s1,c2,s2  room distortion correction, deg (tools/mag_room_fit.py; SET MAG_C1/S1/C2/S2)
 //   --gyro-noise v / --accel-sigma v / --bias-walk v / --bias-walk-z v   EkfParams (attitude_ekf.h;
 //                   still the original placeholders) - try values on recorded runs
+//   --leak          the accelerometer update's old full gain, which also moved heading
+//                   (EkfParams::accelNoHeading = false; the firmware before 2026-11-01 night)
+//   --gyro-sz k     yaw gyro scale to replay with; --log-sz k: the scale the log was recorded with
+//                   (default 1.009, logs 10-31 to 11-01 22:52; 1.0045 after)
 //
 // Usage: replay <LOG.CSV> <out.csv> [options]
 // The log must contain the rows from a calibration end (state C -> I) or start after one (the
@@ -63,6 +67,10 @@ int main(int argc, char** argv) {
                    params::kMagRoomCorrDeg[3]};
   EkfParams ep;
   bool epChanged = false;
+  // Logs from 2026-10-31 on carry gyro z already multiplied by the firmware's yaw scale (this
+  // value, kGyroScaleZ then); --gyro-sz k replays them as if k had been used instead.
+  float logGyroSz = 1.009f;  // --log-sz k: the scale the log was recorded with (1.0045 from 2026-11-01 23:00)
+  float gyroSz = 0.0f;       // 0 = replay with the logged scale
   for (int i = 3; i < argc; i++) {
     if (!strcmp(argv[i], "--sigma") && i + 1 < argc) sigma = (float)atof(argv[++i]);
     else if (!strcmp(argv[i], "--hard") && i + 1 < argc && sscanf(argv[++i], "%f,%f,%f", &hard.x, &hard.y, &hard.z) == 3) {}
@@ -72,11 +80,15 @@ int main(int argc, char** argv) {
     else if (!strcmp(argv[i], "--accel-sigma") && i + 1 < argc) { ep.accelSigma = (float)atof(argv[++i]); epChanged = true; }
     else if (!strcmp(argv[i], "--bias-walk") && i + 1 < argc) { ep.gyroBiasWalk = (float)atof(argv[++i]); epChanged = true; }
     else if (!strcmp(argv[i], "--bias-walk-z") && i + 1 < argc) { ep.gyroBiasWalkZ = (float)atof(argv[++i]); epChanged = true; }
+    else if (!strcmp(argv[i], "--leak")) { ep.accelNoHeading = false; epChanged = true; }  // pre-2026-11-01 accel gain
+    else if (!strcmp(argv[i], "--gyro-sz") && i + 1 < argc) gyroSz = (float)atof(argv[++i]);
+    else if (!strcmp(argv[i], "--log-sz") && i + 1 < argc) logGyroSz = (float)atof(argv[++i]);
     else if (!strcmp(argv[i], "--nomag")) noMag = true;
     else if (!strcmp(argv[i], "--predict")) predict = true;
     else if (!strcmp(argv[i], "--learn")) predict = false;
     else if (!strcmp(argv[i], "--nokick")) noKick = true;
   }
+  const float gyroSzRatio = gyroSz > 0.0f ? gyroSz / logGyroSz : 1.0f;
   FILE* in = fopen(argv[1], "r");
   FILE* out = fopen(argv[2], "w");
   if (!in || !out) {
@@ -140,7 +152,8 @@ int main(int argc, char** argv) {
     // -0.001953 is logged as -0.00195): snap it back to the sensor's steps.
     auto q = [&](int c, double lsb) { return (float)(lsb * std::lround(atof(f[c].c_str()) / lsb)); };
     const double kG = 1.0 / 512;
-    const Vec3 g{q(cG, kG), q(cG + 1, kG), q(cG + 2, kG)};
+    // (z is logged after the yaw scale, so it no longer sits on the 1/512 grid: don't snap it)
+    const Vec3 g{q(cG, kG), q(cG + 1, kG), (float)(atof(f[cG + 2].c_str()) * gyroSzRatio)};
     const Vec3 a{(float)atof(f[cA].c_str()), (float)atof(f[cA + 1].c_str()), (float)atof(f[cA + 2].c_str())};
     const Vec3 m{(float)atof(f[cM].c_str()), (float)atof(f[cM + 1].c_str()), (float)atof(f[cM + 2].c_str())};
     float spd[4];

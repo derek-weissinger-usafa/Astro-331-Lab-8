@@ -442,10 +442,134 @@ Warm board, `CALIBRATE 180` clamped (z bias −0.0493 °/s), table floated, whee
   Possibly related to the old Teensy's shorted 3.3 V rail (10-30).
 - Laser hold (requirement 1) still to measure: warm calibration + `DEMO LEVEL` on the laser.
 
+### 2.29 Requirement 1 measured: 5-minute laser hold within 0.25° (2026-11-01 evening, `DEMO_0014.CSV`)
+- After dinner the table rested near its stop (pitch ~−25°, roll ~+8°; cause not found). Rebalanced stiff: top screws,
+  nuts and the 126 g weight off, laser on, washers AB 5 / BC 2 / CD 2 / AD 0; swing 3.2–3.6 s, CG ~9–11 mm below the
+  pivot; rest tilt at the tape marker roll −2.5°, pitch +0.1°. Washer moves responded 2–4× the swing-fit sensitivity and
+  a pure-y move showed up in pitch (as on 10-31): the assumed seat-to-axis layout is probably wrong.
+- Power-on 17:54, warm-up ~13 min, `CALIBRATE 180` at 18:05 (z bias −0.0442 °/s). `DEMO LEVEL` (heading-hold bias 100 rpm),
+  laser on the 2480 mm wall:
+
+  | t (s) | 0 | 61 | 91 | 121 | 151 | 182 | 212 | 242 | 272 | 302 |
+  |---|---|---|---|---|---|---|---|---|---|---|
+  | Laser (°) | −0.20 | −0.22 | −0.30 | −0.40 | −0.45 | −0.38 | −0.37 | −0.30 | −0.30 | −0.37 |
+  | Estimate (°) | 0.00 | −0.20 | −0.21 | −0.20 | −0.20 | −0.21 | −0.21 | −0.20 | −0.20 | −0.21 |
+
+  (The −0.2° at t = 0 is the spin-up kick before the hold captured its heading; the estimate saw it too.)
+- **True heading stayed within a 0.25° band for 5 min, no trend (net −0.17°), no visible jitter: requirement 1 met.**
+  Stopped at 333 s with wheel D at ~65 rad/s (yaw drag would have ended it on the 75 rad/s limit ~30 s later).
+  The earlier 14–20 °/h drift (§2.27) was the short warm-up.
+- **SLEW YAW, 4 wheels (18:41):** targets 1–3 PASS (max yaw err 0.04 / 0.83 / 0.06°), then **`DISARM IMU_TIMEOUT`** 2 s
+  into target 4: the BNO085 went silent 524 ms and was reset (4th chip reset since the 17:54 boot, 900 reports lost).
+  Suspect wheel D's damaged encoder lead dipping the shared 3.3 V rail (also the IMU and Teensy supply; see §2.28).
+- **SLEW YAW, 3 wheels (18:49; D's encoder blue/3.3 V wire unplugged, `WHEEL D OFF`, recalibrated, z bias −0.0495 °/s):
+  4/4 PASS**, max errors yaw 0.02 / 0.05 / 0.10 / 0.09°, roll ≤ 0.29°, pitch ≤ 0.13°. No new IMU chip resets during the
+  run (counters before/after: rst 4/4, maxgap 524/524 ms, +30 reports lost). With D off, B sits near 0 in pure yaw
+  (only wheel with a y component); A and C carry the yaw.
+- **Laser at the end: +1.1°** (start 0°; the targets make one full CCW turn). Outside ±1°, against −0.1° in `SLEW_0003`.
+  Likely bias drift after tonight's IMU chip resets (the z bias moved 0.005 °/s between the 18:05 and 18:44
+  calibrations); a 60 s post-run drift check was not taken.
+- **SLEW YAW repeat, 3 wheels (18:53, same calibration, D still unplugged): 4/4 PASS**, max errors yaw 0.05 / 0.05 /
+  0.06 / 0.08°, roll ≤ 0.31°, pitch ≤ 0.18°; no new IMU chip resets (rst 4/4). **Laser at the end: +0.06°** after the
+  full 360° turn (requirement 2 confirmed again; the +1.1° run was a one-off, likely bias settling after the resets).
+  Holding afterwards: −0.18° ~60 s later (a 0.24° wander, as in the 5-minute hold; within the hold's 0.25° band).
+
+### 2.30 Live run through all requirements, D reconnected (2026-11-01 night, `DEMO_0015.CSV`)
+- Fresh boot 21:18, 9 min warm-up, `CALIBRATE 180` at 21:28 (z bias −0.0424 °/s; IMU clean: 1 reset at boot, 0 lost).
+  First `DEMO LEVEL` flagged all four wheels dead at once: motor switch off (its leads were loose); `FAULT CLEAR`, retried.
+- **Requirement 1:** `DEMO LEVEL` 3 min, laser −0.05 / −0.03 / −0.03 / −0.08 / −0.18° at 0.5 / 1 / 2 / 2.5 / 3 min (0.15° band);
+  estimate within ±0.03° (a wheel pattern switch at 212 s moved it +0.15° briefly).
+- **SLEW YAW (4 wheels): 4/4 PASS** (max yaw err 0.02 / 0.61 / 0.03 / 0.03°, roll ≤ 0.41°). Laser +1.7° at the end and
+  steady 60 s later: a fixed offset, not drift; the start looked unsettled, so likely a wrong zero (SLEW YAW takes its
+  reference heading at the instant it starts). An earlier attempt started 1 s after STOPping the hold, while the braked
+  wheels kicked the table (target 1 at 1.00°); stopped by hand.
+- **Requirement 3: `FAULT TEST B` during `DEMO LEVEL`: PASS**, detected 0.90 s, back within ±1° 1.3 s after the failure
+  (peak yaw err 1.38°), 30 s hold max 0.41° yaw / 0.01° roll, pitch on A/C/D (D at ~−55 rad/s). Laser −0.48° steady
+  through the whole test: the failure was not visible on the wall.
+- IMU: one 459 ms gap while Idle after a STOP (no chip reset, nothing disarmed) with D reconnected; otherwise clean.
+- **`DEMO ALL` written and uploaded:** the three parts in one armed run (CLAUDE.md), slews referenced to the heading the
+  hold kept, so the start reference problem above can't recur.
+
+### 2.31 `DEMO ALL` on the table (2026-11-01 night, `DEMO_0016`–`DEMO_0018.CSV`)
+- **Start failures:** at 21:59, 22:09 and 22:29 (and 21:33 with plain `DEMO LEVEL`) all four wheels were flagged dead within
+  ~1 s of arming and one or two wheels (D; A and D) ran at full speed until the motor switch was turned off. Checks: driver
+  logic GND to Teensy GND OK, motor-switch path OK, D's driver inputs (VCC, EN, ENB, PWM at 0 V) and wiring OK, D still at
+  idle with motors on, packs > 12 V, each wheel's `TEST 0.3` 45–47 rad/s (D's encoder read 0 once, then fine), `SPEED ALL 100`
+  and a clamped 6 s `DEMO LEVEL` fine. Not firmware (same code path as `DEMO LEVEL`; also happened on the old firmware). Every
+  failure came right after the table was handled to unclamp and line up; the motor-switch leads are loose (not yet
+  soldered) and D's encoder lead was then strain-relieved, after which the run below started cleanly. Suspect an
+  intermittent joint under the combined start-up current. IMU gaps of 459–499 ms (no chip reset) accompanied these events.
+  The SD logs record every encoder and duty at 100 Hz through each failure (not yet analysed).
+- **22:35 run: complete, all parts PASS by the firmware's grading:** 1 hold 60 s max err 0.13°, jitter 0.015° rms, drift
+  +0.001°; 2 SLEW YAW 4/4 (max yaw 0.04 / 0.04 / 0.26 / 0.03°); 3 wheel B detected 0.87 s, recovered 1.5 s (peak 1.42° yaw),
+  30 s hold max 0.37°. No disarm between parts.
+- **Laser:** −0.18° at the end of part 1, **+2.1° after the slews (2.3° off)**, +1.9° after the wheel failure (it barely
+  moved). The estimate came back within 0.08°, so the yaw estimate loses ~2° over the full CCW turn (0.6% if a scale error).
+  With the +1.7° earlier (§2.30) that is two 4-wheel runs tonight; this afternoon's SLEW YAW gave −0.1° (§2.27).
+  **Open:** run SLEW YAW with mirrored targets (−45, −135, +135, 0: a full CW turn): an error that flips sign is a gyro
+  scale error (retune `kGyroScaleZ`); one that stays positive is a bias while the wheels spin fast during slews.
+
+### 2.32 Yaw lost in the EKF's accelerometer update; gyro scale re-fitted (2026-11-01 night)
+- **Mirrored SLEW YAW** (full CW turn, 4/4 PASS by the firmware): laser **−1.8°** from a 0° start, against +2.3° CCW. The
+  error flips with the turn direction: the estimate under-counts every turn by ~2° (~0.57%).
+- Not lost samples: the logs' timestamps match the BNO085's sequence counter (sum ratio 0.99975, no zero or doubled steps).
+  But integrating the logged gyro z (scaled 1.009, minus bias) over each full-turn run gives **364.1° CCW / −363.1° CW**
+  while the EKF's yaw turned exactly 360° (laser truth 362.3° / 361.8°): the estimator took ~1% off.
+- **Cause:** the accelerometer update. While the table turns, the MEKF's yaw error becomes correlated with its tilt error, so
+  the full gain also rotated the estimate about the vertical (how much depended on each run's tilt/covariance history:
+  laser results −0.1 to +2.3° with the same scale). `kGyroScaleZ` = 1.009 (fitted 10-31 with the leak present) had been
+  compensating part of it.
+- **Fix (uploaded):** `EkfParams::accelNoHeading` (default on): the attitude rows of the accelerometer gain are projected
+  off the measured vertical, so gravity corrects roll/pitch only. `kGyroScaleZ` re-fitted to **1.0045** by replaying the
+  logs through the fixed EKF (`tools/replay`, new `--leak` and `--gyro-sz` options): predicted end errors with the old
+  firmware +2.66 / −1.52 / +2.01° against the laser's +2.28 / −1.80 / +1.7° (a common ~+0.3° offset, z bias; the scale
+  part fits to ±0.1°). The `--leak` replay reproduces the logged yaw within 0.1–0.5°, checking the replay itself.
+  The +1.7° at 21:41 (§2.30) was this error too, not a wrong zero.
+- **To confirm:** one laser SLEW YAW (or `DEMO ALL`) on the new firmware; expect within ~±0.5° after the full turn.
+
+### 2.33 Start failures = SD file creation stalling the wheel loop (2026-11-01 night)
+- The next `DEMO ALL` (23:00, fresh boot after the upload) failed at arm again (all four flagged, A and D at full speed).
+  **Every start failure today was the first arm after a boot** (17:07, 18:13, 21:33, 21:59, 22:09, 22:29, 23:00); every
+  later arm worked (21:34–21:46, 22:33, 22:35).
+- `DEMO_0016`/`0017` at 100 Hz: ~0.2 s after arming, the encoder counts of all four wheels jump ~1000 (2.5 turns) between
+  two rows while the measured speeds stay 0 and the duty stays frozen: `loop()` (and with it the 100 Hz wheel loop) was
+  blocked for a fraction of a second. The first arm after a boot opens a new `DEMO_####.CSV`, and the card's first write
+  to a new file searches the FAT for free space; the IMU kept being read through `yield()`, so the control burst and then
+  one huge wheel-loop step made the dead-motor detector flag every wheel, and frozen or burst duties ran some up. The
+  459–499 ms IMU gaps were the same stalls.
+- **Fixes (built, not yet uploaded):** `DataLogger::startFile` writes and flushes the header (padded to whole sectors with a
+  `#` comment line) before returning, so the slow first allocation happens while the wheels are still stopped; and
+  `wheelLoop` treats a step longer than `kWheelLoopStallS` (50 ms) as a stall: fault checks skip it, the speed loop uses a
+  normal step, and it reports `# WHEEL LOOP STALLED n ms`.
+- So D's encoder lead, the motor-switch leads and the packs were not the cause of the start failures (D's lead is still
+  worth replacing: it did drop out on its own this afternoon).
+
+### 2.34 `DEMO ALL`, all requirements, laser-verified (2026-11-01 23:13, `DEMO_0020.CSV`)
+- Firmware with both fixes (§2.32 heading leak + `kGyroScaleZ` 1.0045, §2.33 SD stall). Fresh boot (first arm after boot,
+  the case that always failed before), 60 s boot calibration + `CALIBRATE 180` (z bias −0.0462 °/s).
+- Start: log file prepared in 1.19 s before arming (reported as a wheel-loop stall, wheels stopped); **no wheel faults.**
+- **1 heading hold PASS:** max error 0.04°, jitter 0.011° rms, drift 0.000° over 60 s; **laser steady at −0.05°.**
+- **2 SLEW YAW 4/4 PASS** (max yaw error 0.03 / 0.02 / 0.13 / 0.05°, roll ≤ 0.23°, pitch ≤ 0.16°). **Laser after the full
+  360° turn: +0.02 to −0.03° against −0.05° before: ~0.05° error** (was +2.3° / −1.8° before the heading fix). Requirement 2
+  confirmed by laser.
+- **3 wheel B failure PASS:** detected 0.49 s, back within ±1° 0.5 s after the failure (peak estimate 0.90° yaw), 30 s hold
+  max 0.36° yaw. Laser: peak −0.31° at the cut, then steady −0.18°.
+- Summary line: `# DEMO ALL COMPLETE: 1 heading hold PASS (max 0.04 deg), 2 slews 4/4 PASS, 3 wheel failure wheel B PASS`.
+- Wheel-loop stalls of 90–350 ms about once a second for the whole run (now reported). The same pattern is in the old
+  firmware's logs (`DEMO_0018`: 116 stalls up to 338 ms in 508 s armed), so they are SD-write stalls, not new; the run
+  passed through them. Next improvement: run the wheel loop from a timer interrupt so the card can't freeze it.
+  **Deferred until after the final presentation (no firmware changes before it).**
+- **Analysis** (`Reports/figures/demo_all_2026-11-01/`: figures, `RESULTS.md`, `make_figs.py`): gyro timestamps match the
+  BNO085 sequence (ratio 0.99974); the integrated yaw rate gives +360.01° for the turn (estimator 360.0°, laser ≈ 360.05°);
+  the PC replay reproduces the flown heading within 0.015°; the old estimator (leak + 1.009) replayed on this run would have
+  ended the slews 0.46° off (1.7–2.3° on earlier runs: the leak varies with each run's tilt history). 101 wheel-loop pauses
+  (median 118 ms) during the armed run.
+
 ## 3. Open issues (details and owners in `TODO.md`)
 - **Wheel D's encoder connection is intermittent** (reseated twice 2026-10-30, failed again 2026-11-01, §2.28): replace its
   four wires, soldered + strain relief. Possibly also behind the unexplained Teensy reboots.
-- **Table balance / pendulum** (§2.7, §2.18): blocks levelling and tilted slews; requirements 1–3 work at the rest tilt.
+- **Table balance / pendulum** (§2.7, §2.18, §2.29): blocks levelling and tilted slews; requirements 1–3 work at the rest
+  tilt. Rebalanced stiff (CG ~10 mm) on 11-01 evening.
 - **Wheel D intermittent weakness** (§2.18): 25% slow earlier on 10-31, normal later; check its power-path connections.
 - **Wheel A rub and low pack A; wheel C high duty and oscillation.**
 - **Real table mass and inertia** still unmeasured (fits suggest x/y 0.05–0.13, z ~0.08 kg·m²).

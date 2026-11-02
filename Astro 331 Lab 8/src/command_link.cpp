@@ -145,7 +145,18 @@ static Command parseLine(char* line) {
     char* a = strtok_r(nullptr, " \t,", &save);
     c.cmd = (a && !strcmp(a, "SPIN"))    ? Cmd::DemoSpin
             : (a && !strcmp(a, "LEVEL")) ? Cmd::DemoLevel
+            : (a && !strcmp(a, "ALL"))   ? Cmd::DemoAll
                                          : Cmd::Unknown;
+    // DEMO ALL [hold s] [A-D], either order
+    for (char* v = c.cmd == Cmd::DemoAll ? strtok_r(nullptr, " \t,", &save) : nullptr; v;
+         v = strtok_r(nullptr, " \t,", &save)) {
+      if (v[0] >= 'A' && v[0] <= 'D' && v[1] == '\0') {
+        c.wheel = v[0] - 'A';
+      } else {
+        c.value = (float)atof(v);
+        c.hasValue = true;
+      }
+    }
   } else if (!strcmp(tok, "BEGIN")) {
     char* a = strtok_r(nullptr, " \t,", &save);
     char* b = strtok_r(nullptr, " \t,", &save);

@@ -89,7 +89,9 @@ class SlewTest {
   float tiltBudget(int i, float k) const;
   static float tiltCapacity();
 
-  void start(const Quat& qNow, Mode mode = Mode::Absolute, float gravK = 0.0f);
+  // yaw0Rad: heading the target yaws are relative to (default: qNow's). DEMO ALL passes the heading
+  // its hold kept, so the slews start from the held reference, not from the estimate.
+  void start(const Quat& qNow, Mode mode = Mode::Absolute, float gravK = 0.0f, float yaw0Rad = NAN);
   // hWheels: wheel angular momentum in the body frame (N m s); used by the tilt mode's unloading.
   Event step(float dt, const Quat& qEst, const Vec3& hWheels = {0, 0, 0});
   void abort() { phase_ = Phase::Off; }

@@ -6,6 +6,7 @@
 #include "control_params.h"
 #include "data_logger.h"
 #include "demo_spin.h"
+#include "full_demo.h"
 #include "slew_test.h"
 #include "step_test.h"
 #include "frames.h"
@@ -42,6 +43,7 @@ static SlewTest slew;
 static MagAid magAid;  // magnetometer heading aid (mag_aid.h)
 static MagTest magTest;  // MAG TEST: fixed-table validation of the aid (mag_test.h)
 static StepTest stepTest;  // STEP TEST: heading steps on top of DEMO LEVEL (step_test.h)
+static FullDemo fullDemo;  // DEMO ALL: hold -> SLEW YAW -> FAULT TEST in one armed run (full_demo.h)
 // Heading holds: null-mode bias keeping every wheel >= tune::holdMinRadS from zero (null_bias.h).
 static NullBias holdBias;
 static uint32_t lastMagUs = 0;
@@ -193,6 +195,15 @@ static void disarm(const char* reason) {
     fault.abort();
     sayAll("# FAULT TEST ABORTED (disarmed)\n");
   }
+  if (fullDemo.active()) {
+    if (fullDemo.phase() == FullDemo::Phase::Done) {
+      sayAll("# DEMO ALL ENDED\n");
+    } else {
+      snprintf(msg, sizeof(msg), "# DEMO ALL STOPPED in part %d/3\n", fullDemo.part());
+      sayAll(msg);
+    }
+    fullDemo.abort();
+  }
 }
 
 // ---- Wheel failure (requirement 3) ----
@@ -205,6 +216,21 @@ static void wheelStatus(char out[kN + 1]) {
   for (int i = 0; i < kN; i++)
     out[i] = wheelEnabled[i] ? (wheels[i].simulatedDead() ? 'x' : '.') : (wheelDead[i] ? 'D' : '-');
   out[kN] = '\0';
+}
+
+// DEMO ALL summary (full_demo.h): all three parts on one line, then it keeps holding until STOP.
+static void finishFullDemo(bool faultRan) {
+  char part3[64] = "not run";
+  if (faultRan)
+    snprintf(part3, sizeof(part3), "wheel %c %s", wheelChar(fault.wheel()), fault.pass() ? "PASS" : "FAIL");
+  char msg[224];
+  snprintf(msg, sizeof(msg),
+           "# DEMO ALL COMPLETE: 1 heading hold %s (max %.2f deg), 2 slews %d/%d PASS, 3 wheel failure %s; "
+           "holding until STOP\n",
+           fullDemo.holdPass() ? "PASS" : "FAIL", fullDemo.holdMaxErrDeg(), slew.passCount(), params::kSlewNumTargets,
+           part3);
+  sayAll(msg);
+  fullDemo.setPhase(FullDemo::Phase::Done);
 }
 
 static void reportFault(FaultTest::Event ev) {
@@ -237,6 +263,8 @@ static void reportFault(FaultTest::Event ev) {
       return;
   }
   sayAll(msg);
+  if ((ev == FaultTest::Event::Pass || ev == FaultTest::Event::Fail) && fullDemo.phase() == FullDemo::Phase::Fault)
+    finishFullDemo(true);
 }
 
 // A detector took wheel i out of service: tell the fault test.
@@ -525,6 +553,77 @@ static void startSlew(CommandLink& from, SlewTest::Mode mode) {
   }
 }
 
+// ---- DEMO ALL (full_demo.h): hold -> SLEW YAW -> FAULT TEST without disarming ----
+static void startFullDemo(const Command& c, CommandLink& from) {
+  if (state != State::Idle) {
+    from.send("# DEMO ALL REFUSED: not idle (wait for calibration / DISARM first)\n");
+    return;
+  }
+  // Part 3 needs a spare wheel: all four in service, none failed by an earlier FAULT TEST.
+  for (int i = 0; i < kN; i++) {
+    if (!wheelEnabled[i] || wheels[i].simulatedDead()) {
+      from.send("# DEMO ALL REFUSED: needs all 4 wheels in service (FAULT CLEAR / WHEEL x ON first)\n");
+      return;
+    }
+  }
+  if (fault.active()) {
+    from.send("# DEMO ALL REFUSED: a FAULT TEST is pending (FAULT CLEAR first)\n");
+    return;
+  }
+  float hold = c.hasValue ? c.value : params::kFullHoldS;
+  if (hold < params::kFullHoldMinS) hold = params::kFullHoldMinS;
+  if (hold > params::kFullHoldMaxS) hold = params::kFullHoldMaxS;
+  const int w = c.wheel >= 0 ? c.wheel : params::kFullFaultWheel;
+  startDemo(from, true);  // DEMO LEVEL; refuses (and says why) unless the tilt is ok and the wheels stopped
+  if (!demo.active()) return;
+  fullDemo.start(hold, w);
+  char msg[200];
+  snprintf(msg, sizeof(msg),
+           "# DEMO ALL: 1 heading hold %.0f s once settled, 2 SLEW YAW (%d targets), 3 wheel %c fails %.0f s after "
+           "the slews; STOP ends it\n",
+           hold, params::kSlewNumTargets, wheelChar(w), params::kFaultDelayS);
+  sayAll(msg);
+}
+
+// Part 1 done: grade it and hand the held heading to SLEW YAW (no reset: the wheels keep their speeds).
+static void beginFullSlew() {
+  char msg[200];
+  snprintf(msg, sizeof(msg),
+           "# DEMO ALL 1/3 %s: heading max err %.2f deg, jitter %.3f deg rms, drift %+.3f deg over %.0f s (estimate)\n",
+           fullDemo.holdPass() ? "PASS" : "FAIL", fullDemo.holdMaxErrDeg(), fullDemo.holdJitterDeg(),
+           fullDemo.holdDriftDeg(), fullDemo.holdS());
+  sayAll(msg);
+  const float yaw0 = demo.startYaw();
+  demo.abort();
+  slew.start(ekf.quaternion(), SlewTest::Mode::YawOnly, 0.0f, yaw0);
+  ctrl.setTrajectory(slew.refQ(), slew.refW(), slew.refA());
+  fullDemo.setPhase(FullDemo::Phase::Slew);
+  sayAll("# DEMO ALL 2/3: SLEW YAW from the held heading\n");
+  for (int i = 0; i < params::kSlewNumTargets; i++) sayTarget("SLEW target", i);
+  sayNextSlew();
+}
+
+// Part 2 done (SLEW YAW now holds the start heading): fail the wheel after kFaultDelayS.
+static void beginFullFault() {
+  const int w = fullDemo.faultWheel();
+  for (int i = 0; i < kN; i++) {
+    if (!wheelEnabled[i]) {
+      // A real failure already happened (and was handled): failing another could leave too few.
+      char msg[112];
+      snprintf(msg, sizeof(msg), "# DEMO ALL 3/3 SKIPPED: wheel %c is already out of service\n", wheelChar(i));
+      sayAll(msg);
+      finishFullDemo(false);
+      return;
+    }
+  }
+  fault.start(w, params::kFaultDelayS);
+  fullDemo.setPhase(FullDemo::Phase::Fault);
+  char msg[112];
+  snprintf(msg, sizeof(msg), "# DEMO ALL 3/3: wheel %c motor fails in %.0f s (read the laser now)\n", wheelChar(w),
+           params::kFaultDelayS);
+  sayAll(msg);
+}
+
 // Called every control step while the slew test runs. Returns false if it disarmed.
 static bool stepSlew(float dt, const Vec3& hWheels) {
   switch (slew.step(dt, ekf.quaternion(), hWheels)) {
@@ -572,6 +671,7 @@ static bool stepSlew(float dt, const Vec3& hWheels) {
       snprintf(msg, sizeof(msg), "# SLEW %s COMPLETE: %d/%d PASS, holding target %d until STOP\n",
                slewName(slew.mode()), slew.passCount(), params::kSlewNumTargets, params::kSlewNumTargets);
       sayAll(msg);
+      if (fullDemo.phase() == FullDemo::Phase::Slew) beginFullFault();
       break;
     }
     default:
@@ -1050,7 +1150,7 @@ static void handleCommand(const Command& c, CommandLink& from) {
       snprintf(msg, sizeof(msg),
                "S,%c,%.1f,%.1f,%.1f,sig_yaw=%.2f,%.0f,%.0f,%.0f,%.0f,sd=%s,drop=%lu,demo=%c,"
                "miss=%lu,chipgap=%lu,maxgap=%.0f,lat=%.2f,int=%lu,svc=%lu/%lu,ev=%lu,rst=%lu,en=%lu/%d,intpin=%d,"
-               "wheels=%c%c%c%c,mag=%c,mres=%.2f,bz=%.5f,wst=%s,fault=%c,mt=%d,hb=%.0f/%d,mpred=%d\n",
+               "wheels=%c%c%c%c,mag=%c,mres=%.2f,bz=%.5f,wst=%s,fault=%c,mt=%d,hb=%.0f/%d,mpred=%d,all=%c\n",
                stateChar(), e.x, e.y, e.z, s.z, wheels[0].speed(), wheels[1].speed(), wheels[2].speed(),
                wheels[3].speed(), logger.sdActive() ? logger.fileName() : "off",
                (unsigned long)logger.droppedRows(), slew.active() ? slew.phaseChar() : demo.phaseChar(), (unsigned long)seqMissed,
@@ -1062,7 +1162,8 @@ static void handleCommand(const Command& c, CommandLink& from) {
                kPinImuInt >= 0 ? digitalRead(kPinImuInt) : -1, wheelEnabled[0] ? 'A' : '-',
                wheelEnabled[1] ? 'B' : '-', wheelEnabled[2] ? 'C' : '-', wheelEnabled[3] ? 'D' : '-', magAid.modeChar(),
                magAid.headingResidualDeg(), ekf.gyroBias().z * kRadToDeg, ws, fault.phaseChar(), magTest.index() + 1,
-               tune::holdMinRadS * 60.0f / 6.2831853f, holdBias.switches(), magAid.predictedCount());
+               tune::holdMinRadS * 60.0f / 6.2831853f, holdBias.switches(), magAid.predictedCount(),
+               fullDemo.phaseChar());
       from.send(msg);
       break;
     }
@@ -1071,6 +1172,9 @@ static void handleCommand(const Command& c, CommandLink& from) {
       break;
     case Cmd::DemoLevel:
       startDemo(from, true);
+      break;
+    case Cmd::DemoAll:
+      startFullDemo(c, from);
       break;
     case Cmd::SlewTest:
       startSlew(from, SlewTest::Mode::Absolute);
@@ -1318,6 +1422,11 @@ static void controlStep(float dt) {
         if (demo.levelOnly()) {
           snprintf(msg, sizeof(msg), "# DEMO LEVEL: settled after %.1f s at rest tilt roll %.2f pitch %.2f deg\n",
                    demo.elapsed(), demo.restRoll() * kRadToDeg, demo.restPitch() * kRadToDeg);
+          if (fullDemo.phase() == FullDemo::Phase::Hold) {
+            sayAll(msg);
+            snprintf(msg, sizeof(msg), "# DEMO ALL 1/3: holding the heading %.0f s (read the laser now)\n",
+                     fullDemo.holdS());
+          }
         } else {
           snprintf(msg, sizeof(msg), "# DEMO LEVEL: spinning up to %.1f rpm\n",
                    demo.targetRate() * 60.0f / 6.2831853f);
@@ -1344,6 +1453,13 @@ static void controlStep(float dt) {
         break;
     }
     if (stepTest.active() && demo.phase() == DemoPhase::LevelHold && !stepStepTest(dt, e.z)) return;
+    bool toSlew = false;
+    if (fullDemo.phase() == FullDemo::Phase::Hold && demo.phase() == DemoPhase::LevelHold) {
+      float err = e.z - demo.startYaw();
+      while (err > 3.14159265f) err -= 6.2831853f;
+      while (err < -3.14159265f) err += 6.2831853f;
+      toSlew = fullDemo.holdStep(dt, err * kRadToDeg);
+    }
     // Momentum budget guard: a wheel near its cap means the inertia model is off (or drag).
     float wmax = 0.0f;
     for (int i = 0; i < kN; i++) wmax = fmaxf(wmax, fabsf(wheels[i].speed()));
@@ -1357,6 +1473,7 @@ static void controlStep(float dt) {
         sayAll("# DEMO ABORT: wheel near limit, spinning down\n");
     }
     ctrl.setTrajectory(demo.ref().q, demo.ref().w, demo.ref().a);
+    if (toSlew) beginFullSlew();  // DEMO ALL: the hold hands over to SLEW YAW on the next step
   }
 
   const Vec3 omega = ekf.bodyRate();
@@ -1413,12 +1530,23 @@ static void wheelLoop(float dt) {
     wheels[i].updateSpeed(dt);
     manualSpeed[i] += lpfA * (wheels[i].speed() - manualSpeed[i]);
   }
+  // loop() was blocked (e.g. the SD card): the speed is now an average over the whole gap and the
+  // duty was frozen through it, so the fault checks can't judge this step, and the speed loop and
+  // slew limit use a normal step (else one step integrates the whole gap).
+  const bool stalled = dt > params::kWheelLoopStallS;
+  if (stalled) {
+    char msg[96];
+    snprintf(msg, sizeof(msg), "# WHEEL LOOP STALLED %.0f ms: fault checks skipped for this step\n", dt * 1e3f);
+    sayAll(msg);
+    dt = 1.0f / params::kSpeedLoopHz;
+  }
   for (int i = 0; i < kN; i++) {
     const float w = wheels[i].speed();
-    const bool jump = dt > 0.0f && fabsf(w - prevSpeed[i]) > params::kEncFaultMaxAccelRadS2 * dt;
+    const bool jump = !stalled && dt > 0.0f && fabsf(w - prevSpeed[i]) > params::kEncFaultMaxAccelRadS2 * dt;
     prevSpeed[i] = w;
+    if (stalled) deadDet[i].reset();
     const bool stuck = fabsf(wheels[i].axisDuty()) > params::kEncFaultDuty && fabsf(w) < params::kEncFaultSpeedRadS;
-    encFaultS[i] = stuck ? encFaultS[i] + dt : 0.0f;
+    encFaultS[i] = stuck && !stalled ? encFaultS[i] + dt : 0.0f;
     if (wheelEnabled[i] && (jump || encFaultS[i] > params::kEncFaultTimeS)) {
       wheelEnabled[i] = false;
       wheels[i].stop();
