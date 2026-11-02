@@ -385,8 +385,66 @@ Warm board, `CALIBRATE 180` clamped (z bias −0.0493 °/s), table floated, whee
 - Requirement 2 still needs a measured truth (laser) rather than a visual check.
 - **Write-up of 10-30/31 with figures, simulation methods and sim-vs-table comparison:** `Reports/Lab8_Writeup_2026-10-30_31.html` (figures made by `Reports/figures/writeup_2026-10-31/make_figs.py`).
 
+### 2.26 Tilted targets: raising the CG and `SLEW TILT` (2026-11-01)
+- 11 g laser at ~290 mm: swing 3.0–3.1 s, CG 12.1 mm below the pivot (predicted 12.3). Battery packs re-seated after
+  charging moved the rest pitch ~+2° (rest roll −0.63°, pitch +1.35° at the markers); 2 washers AD → CD to trim.
+- Plan for the stretch with tilts: raise the CG to ~0.5–1 mm with ~220 g at the top screw seats (~250 mm above the pivot;
+  tipping point ~240 g), approached by swing period (target ~11–15 s), trimming sideways at each step. First step +126 g at
+  255 mm (expected CG ~5.5 mm, swing ~4.6 s); not yet measured (IMU ground wire came loose).
+- **`SLEW TILT`** (built, simulated, uploaded): rest-tilt scan, targets as offsets from it, gravity feedforward, momentum
+  unloading by tilting against gravity between targets, budget check, faster slews. Simulation (`tools/slewsim`, firmware code):
+  1 mm ±2° and 0.5 mm ±3° pass 4/4 with up to 1.5 mN·m room torque and GRAV_K ±30% off; 2 mm fails even ±1°. A room-fixed
+  torque made the rest tilt drift as the table turned and the damping fought it (wheel limit in the scan) until the scan
+  reference was given the slow tilt rate.
+- **Balancing toward ~1 mm stopped at ~3 mm** (swing ~6.2 s, k ~0.15 N·m/rad): the table's response stopped matching the
+  model (a ~1,700 g·mm shift while lining up, trims landing 2× too far or moving the other axis, two apparent tip-overs
+  that were large rest tilts). Readings scatter ~1° back to back at this stiffness. Left at roll +0.45°, pitch −2.3°:
+  4 nuts per side on two 55 g screws along y at 235 mm (B group ~53 mm, D ~45–48 mm), washers CD 7 / AD 1 / BC 1 (7 g);
+  126 g top weight and 48 g of low brackets removed; laser on top.
+- **SLEW YAW made robust to the lower stiffness** (built, simulated, NOT uploaded): at 3 mm a room-fixed torque makes the
+  rest tilt drift as the table turns and the damping fought it (simulation: 1.5 mN·m → wheel limit). The yaw-only reference
+  now includes the slow tilt rate, like the SLEW TILT scan: 4/4 PASS at 3 mm and 13 mm with 0.5–3 mN·m, lower peak wheel
+  speeds. Needs an upload and one table run to confirm.
+- **First SLEW TILT on the table (DEMO_0012):** budget check refused ±0.4° (19.8 > 19.7 mN·m·s) as designed; with ±0.5/0.35°
+  targets the scan hit the wheel limit after 40 s. Tilt stayed steady while the wheels filled at 0.70 / 0.39 mN·m (x/y):
+  a ~0.05 °/s x/y gyro bias error times the damping gain is a steady torque that gravity holds still and the wheels supply.
+  **Fix (uploaded):** momentum leak in SLEW YAW and the scan (reference rate += h_xy/(Kd·10 s)); h_xy then settles at
+  ~Kd·bias·10 s. Simulation with a gyro bias (new `sim` argument): without the leak the scan fails at 58 s (table: 40 s);
+  with it, SLEW TILT ±0.5° at 3 mm passes 4/4 with 0.05–0.1 °/s bias, and SLEW YAW passes at 3 and 13 mm with peak
+  wheels 26–40 rad/s (63 without the leak). SLEW YAW with the slow-drift + leak changes still needs its table confirmation.
+
+### 2.27 First measured heading truth: SLEW YAW −0.1° after 360° (2026-11-01, `SLEW_0003.CSV`)
+- Firmware with the slow-drift reference and momentum leak (uploaded), CG ~3 mm below the pivot, aid off, 5 min warm-up +
+  `CALIBRATE 180` (z bias −0.0446 °/s). Laser on the deck, wall 2480 mm from the bearing centre, printed scale
+  (`Reports/laser_scale_2480mm.pdf`, `tools/laser_scale.py`).
+- **`SLEW YAW` 4/4 PASS**; worst hold errors yaw 0.03–0.59°, roll 0.08–0.46°, pitch 0.04–0.19° (target 2 was the largest);
+  wheels ≤ ~41 rad/s, back near ±10 rad/s at the end.
+- **Laser at the end, after 360° of slews: −0.1°** (dot 4.3 mm right of zero). Requirement 2 heading accuracy measured, 10×
+  inside ±1°, and it confirms the 1.009 yaw gyro scale (residual ~0.03%).
+- **Laser hold (DEMO LEVEL, same calibration):** estimate held within 0.02° throughout, but the dot drifted clockwise:
+  −0.25 / −0.43 / −0.58 / −0.65 / −0.78° at 31 / 61 / 91 / 121 / 151 s (~−0.004 to −0.006 °/s, ~14–20 °/h). The yaw
+  calibration was taken only 5 min after power-on; the notes call for ~10 min, because the BNO085's z bias keeps shifting as
+  it warms. Stopped to recalibrate warm (board ~30 min on) and repeat.
+
+### 2.28 Wheel D encoder lead, pack A lead, unexplained reboots (2026-11-01, `DEMO_0013.CSV`)
+- `TEST D` read 0 rad/s while D's motor turned; 10 hand turns gave ~−20 counts (expected ~4000). Encoder power (3.3 V) was
+  fine and the encoder outputs toggled at the motor end but not at the Teensy: a break in the lead that both signals pass
+  through, conducting only in some positions (counts came and went while the lead was handled).
+- After reseating: 10 hand turns −3999, `TEST D 0.3` 46.3 rad/s. Then `DEMO LEVEL` (warm `CALIBRATE 180` at 17:05, z bias
+  −0.0476 °/s) disarmed after ~1 s: B, C, D flagged dead motors, `DISARM ALLOC`. Cause: pack A's battery lead had come
+  off (A no drive) and D's encoder dropped out again under motor vibration (D spun, read 0); B is believed to have run fast
+  during a reboot, when the PWM pins float for up to ~3 s before `WheelMotor::begin()`.
+- Pack A reconnected: A/B/C 45.6–47 rad/s at 0.3 duty. D's lead reseated with no strain: 10 turns −3995, `TEST D 0.3`
+  46.7 / 46.6 rad/s. **All four wheels good, but D's lead is only reseated: replace its four wires with soldered,
+  strain-relieved joints before the demo.**
+- **The Teensy rebooted ~3 times without a power-cycle** (~16:48, ~17:09, ~17:19), each time while wiring was being handled.
+  Suspect a 3.3 V–GND short in D's damaged lead (blue/green run in it); check blue–green continuity while flexing the lead.
+  Possibly related to the old Teensy's shorted 3.3 V rail (10-30).
+- Laser hold (requirement 1) still to measure: warm calibration + `DEMO LEVEL` on the laser.
+
 ## 3. Open issues (details and owners in `TODO.md`)
-- **Wheel D's encoder connection is intermittent** (reseated twice 2026-10-30): solder/crimp + strain relief.
+- **Wheel D's encoder connection is intermittent** (reseated twice 2026-10-30, failed again 2026-11-01, §2.28): replace its
+  four wires, soldered + strain relief. Possibly also behind the unexplained Teensy reboots.
 - **Table balance / pendulum** (§2.7, §2.18): blocks levelling and tilted slews; requirements 1–3 work at the rest tilt.
 - **Wheel D intermittent weakness** (§2.18): 25% slow earlier on 10-31, normal later; check its power-path connections.
 - **Wheel A rub and low pack A; wheel C high duty and oscillation.**

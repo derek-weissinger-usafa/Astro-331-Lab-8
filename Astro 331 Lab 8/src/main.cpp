@@ -398,8 +398,15 @@ static void startDemo(CommandLink& from, bool levelOnly) {
 
 // ---- SLEW TEST (stretch requirement) ----
 static void sayTarget(const char* head, int i) {
+  char msg[128];
+  if (slew.tilt()) {
+    const SlewTest::Target& g = slew.tiltTarget(i);
+    snprintf(msg, sizeof(msg), "# %s %d: roll %+.1f pitch %+.1f deg from the rest tilt, yaw %+.1f deg (rel. to start)\n",
+             head, i + 1, g.rollDeg, g.pitchDeg, g.yawDeg);
+    sayAll(msg);
+    return;
+  }
   const SlewTest::Target& g = slew.target(i);
-  char msg[112];
   if (slew.yawOnly()) {
     snprintf(msg, sizeof(msg), "# %s %d: yaw %+.1f deg (rel. to start) at the rest tilt\n", head, i + 1, g.yawDeg);
     sayAll(msg);
@@ -410,14 +417,32 @@ static void sayTarget(const char* head, int i) {
   sayAll(msg);
 }
 
+static void sayTiltTarget(const char* head, int i) {
+  const SlewTest::Target& g = slew.tiltTarget(i);
+  char msg[128];
+  snprintf(msg, sizeof(msg), "# %s %d: roll %+.1f pitch %+.1f deg from the rest tilt, yaw %+.1f deg (rel. to start)\n",
+           head, i + 1, g.rollDeg, g.pitchDeg, g.yawDeg);
+  sayAll(msg);
+}
+
 static void reportSlewResult(int i) {
   const SlewTest::Result& r = slew.result(i);
-  char msg[160];
+  char msg[176];
   if (slew.yawOnly()) {
     snprintf(msg, sizeof(msg),
              "# SLEW %d/%d %s: %s, max err yaw %.2f deg, roll %.2f pitch %.2f from the rest tilt (%.2f, %.2f) over %.0f s\n",
              i + 1, params::kSlewNumTargets, r.pass ? "PASS" : "FAIL", r.settled ? "settled" : "NOT settled",
              r.maxErrDeg.z, r.maxErrDeg.x, r.maxErrDeg.y, r.restRollDeg, r.restPitchDeg, params::kSlewHoldS);
+    sayAll(msg);
+    return;
+  }
+  if (slew.tilt()) {
+    const SlewTest::Target& g = slew.tiltTarget(i);
+    snprintf(msg, sizeof(msg),
+             "# SLEW %d/%d %s: %s, max err roll %.2f pitch %.2f yaw %.2f deg over %.0f s (target rest %.2f/%.2f %+.1f/%+.1f)\n",
+             i + 1, params::kSlewNumTargets, r.pass ? "PASS" : "FAIL", r.settled ? "settled" : "NOT settled",
+             r.maxErrDeg.x, r.maxErrDeg.y, r.maxErrDeg.z, params::kSlewHoldS, r.restRollDeg, r.restPitchDeg,
+             g.rollDeg, g.pitchDeg);
     sayAll(msg);
     return;
   }
@@ -434,7 +459,11 @@ static void sayNextSlew() {
   sayAll(msg);
 }
 
-static void startSlew(CommandLink& from, bool yawOnly) {
+static const char* slewName(SlewTest::Mode m) {
+  return m == SlewTest::Mode::YawOnly ? "YAW" : m == SlewTest::Mode::Tilt ? "TILT" : "TEST";
+}
+
+static void startSlew(CommandLink& from, SlewTest::Mode mode) {
   if (state != State::Idle || demo.active()) {
     from.send("# SLEW REFUSED: not idle (wait for calibration / DISARM first)\n");
     return;
@@ -451,9 +480,30 @@ static void startSlew(CommandLink& from, bool yawOnly) {
       return;
     }
   }
+  if (mode == SlewTest::Mode::Tilt) {
+    // Tilted targets need the gravity stiffness, and each must fit the wheels' x/y momentum.
+    if (tune::gravK <= 0.0f) {
+      from.send("# SLEW TILT REFUSED: set GRAV_K first (N m/rad = I (2 pi / swing period)^2)\n");
+      return;
+    }
+    const float cap = SlewTest::tiltCapacity();
+    for (int i = 0; i < params::kSlewNumTargets; i++) {
+      const float h = slew.tiltBudget(i, tune::gravK);
+      if (h > params::kTiltBudgetFrac * cap) {
+        const SlewTest::Target& g = slew.tiltTarget(i);
+        const float off = sqrtf(g.rollDeg * g.rollDeg + g.pitchDeg * g.pitchDeg);
+        char msg[160];
+        snprintf(msg, sizeof(msg),
+                 "# SLEW TILT REFUSED: target %d needs %.1f mN m s, limit %.1f: reduce its tilt to <= %.1f deg (now %.1f)\n",
+                 i + 1, h * 1e3f, params::kTiltBudgetFrac * cap * 1e3f, off * params::kTiltBudgetFrac * cap / h, off);
+        from.send(msg);
+        return;
+      }
+    }
+  }
   if (!logger.sdActive()) logger.startFile("SLEW");
   ctrl.reset();
-  slew.start(ekf.quaternion(), yawOnly);
+  slew.start(ekf.quaternion(), mode, tune::gravK);
   ctrl.setTrajectory(slew.refQ(), slew.refW(), slew.refA());
   for (int i = 0; i < kN; i++) {
     speedLoops[i].reset();
@@ -461,17 +511,42 @@ static void startSlew(CommandLink& from, bool yawOnly) {
   }
   state = State::Armed;
   char msg[96];
-  snprintf(msg, sizeof(msg), "# SLEW %s START: %d targets, +/-%.1f deg, hold %.0f s%s%s\n", yawOnly ? "YAW" : "TEST",
+  snprintf(msg, sizeof(msg), "# SLEW %s START: %d targets, +/-%.1f deg, hold %.0f s%s%s\n", slewName(mode),
            params::kSlewNumTargets, params::kSlewTolDeg, params::kSlewHoldS, logger.sdActive() ? ", log " : "",
            logger.sdActive() ? logger.fileName() : "");
   sayAll(msg);
   for (int i = 0; i < params::kSlewNumTargets; i++) sayTarget("SLEW target", i);
-  sayNextSlew();
+  if (mode == SlewTest::Mode::Tilt) {
+    snprintf(msg, sizeof(msg), "# SLEW TILT: rest-tilt scan, 360 deg in %.0f s (roll/pitch free)\n",
+             slew.slewDuration());
+    sayAll(msg);
+  } else {
+    sayNextSlew();
+  }
 }
 
 // Called every control step while the slew test runs. Returns false if it disarmed.
-static bool stepSlew(float dt) {
-  switch (slew.step(dt, ekf.quaternion())) {
+static bool stepSlew(float dt, const Vec3& hWheels) {
+  switch (slew.step(dt, ekf.quaternion(), hWheels)) {
+    case SlewTest::Event::ScanDone: {
+      const float* r = slew.restRollFitDeg();
+      const float* p = slew.restPitchFitDeg();
+      char msg[176];
+      snprintf(msg, sizeof(msg),
+               "# SLEW TILT scan: rest roll %.2f %+.2f cos %+.2f sin, pitch %.2f %+.2f cos %+.2f sin deg (heading wave %.2f / %.2f)\n",
+               r[0], r[1], r[2], p[0], p[1], p[2], sqrtf(r[1] * r[1] + r[2] * r[2]), sqrtf(p[1] * p[1] + p[2] * p[2]));
+      sayAll(msg);
+      break;
+    }
+    case SlewTest::Event::UnloadDone: {
+      char msg[128];
+      snprintf(msg, sizeof(msg), "# SLEW %d/%d unloaded: |h_xy| %.1f -> %.1f mN m s in %.1f s\n", slew.index() + 1,
+               params::kSlewNumTargets, slew.hxyAtUnloadStart() * 1e3f,
+               sqrtf(hWheels.x * hWheels.x + hWheels.y * hWheels.y) * 1e3f, slew.lastUnloadS());
+      sayAll(msg);
+      sayNextSlew();
+      break;
+    }
     case SlewTest::Event::Settled: {
       char msg[80];
       snprintf(msg, sizeof(msg), "# SLEW %d/%d reached (+/-%.1f deg) %.1f s after the slew, holding\n",
@@ -489,13 +564,13 @@ static bool stepSlew(float dt) {
     }
     case SlewTest::Event::TargetDone:
       reportSlewResult(slew.index() - 1);
-      sayNextSlew();
+      if (!slew.tilt()) sayNextSlew();  // tilt: announced after unloading
       break;
     case SlewTest::Event::Complete: {
       reportSlewResult(params::kSlewNumTargets - 1);
       char msg[96];
-      snprintf(msg, sizeof(msg), "# SLEW TEST COMPLETE: %d/%d PASS, holding target %d until STOP\n",
-               slew.passCount(), params::kSlewNumTargets, params::kSlewNumTargets);
+      snprintf(msg, sizeof(msg), "# SLEW %s COMPLETE: %d/%d PASS, holding target %d until STOP\n",
+               slewName(slew.mode()), slew.passCount(), params::kSlewNumTargets, params::kSlewNumTargets);
       sayAll(msg);
       break;
     }
@@ -998,13 +1073,26 @@ static void handleCommand(const Command& c, CommandLink& from) {
       startDemo(from, true);
       break;
     case Cmd::SlewTest:
-      startSlew(from, false);
+      startSlew(from, SlewTest::Mode::Absolute);
       break;
     case Cmd::SlewYaw:
-      startSlew(from, true);
+      startSlew(from, SlewTest::Mode::YawOnly);
+      break;
+    case Cmd::SlewTilt:
+      startSlew(from, SlewTest::Mode::Tilt);
       break;
     case Cmd::SlewList:
       for (int i = 0; i < params::kSlewNumTargets; i++) sayTarget("SLEW target", i);
+      for (int i = 0; i < params::kSlewNumTargets; i++) sayTiltTarget("SLEW TILT target", i);
+      break;
+    case Cmd::SlewTSet:
+      if (state != State::Idle) {
+        from.send("# SLEW TSET REFUSED: not idle\n");
+      } else if (!slew.setTiltTarget(c.wheel, c.v[0], c.v[1], c.v[2])) {
+        from.send("# SLEW TSET REFUSED: target 1-4, offsets <= 8 deg\n");
+      } else {
+        sayTiltTarget("SLEW TILT target set", c.wheel);
+      }
       break;
     case Cmd::SlewSet:
       if (state != State::Idle) {
@@ -1219,7 +1307,7 @@ static void controlStep(float dt) {
     return;
   }
 
-  if (slew.active() && !stepSlew(dt)) return;
+  if (slew.active() && !stepSlew(dt, wheelMomentum(ekf.bodyRate()))) return;
 
   if (demo.active()) {
     const Vec3 e = ekf.eulerRad();
@@ -1272,6 +1360,7 @@ static void controlStep(float dt) {
   }
 
   const Vec3 omega = ekf.bodyRate();
+  ctrl.setFeedforward(slew.active() && slew.tilt() ? slew.gravityFF() : Vec3{0.0f, 0.0f, 0.0f});
   const Vec3 tau = ctrl.update(ekf.quaternion(), omega, dt, wheelMomentum(omega));
   if (fault.active())
     reportFault(fault.step(dt, ctrl.angleError() * kRadToDeg, fault.wheel() >= 0 ? wheels[fault.wheel()].speed() : 0.0f));

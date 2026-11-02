@@ -53,15 +53,18 @@ static Command parseLine(char* line) {
       c.cmd = Cmd::SlewTest;
     } else if (a && !strcmp(a, "YAW")) {
       c.cmd = Cmd::SlewYaw;
+    } else if (a && !strcmp(a, "TILT")) {
+      c.cmd = Cmd::SlewTilt;
     } else if (a && !strcmp(a, "LIST")) {
       c.cmd = Cmd::SlewList;
-    } else if (a && !strcmp(a, "SET")) {
+    } else if (a && (!strcmp(a, "SET") || !strcmp(a, "TSET"))) {
+      const bool tset = !strcmp(a, "TSET");
       char* n = strtok_r(nullptr, " \t,", &save);
       char* r = strtok_r(nullptr, " \t,", &save);
       char* p = strtok_r(nullptr, " \t,", &save);
       char* y = strtok_r(nullptr, " \t,", &save);
       if (n && r && p && y) {
-        c.cmd = Cmd::SlewSet;
+        c.cmd = tset ? Cmd::SlewTSet : Cmd::SlewSet;
         c.wheel = atoi(n) - 1;
         c.v[0] = (float)atof(r);
         c.v[1] = (float)atof(p);

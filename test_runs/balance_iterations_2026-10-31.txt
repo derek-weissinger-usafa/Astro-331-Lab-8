@@ -316,3 +316,144 @@ NOTE  Result: roll -1.02/-0.85 (from -3.2: +2.3 deg), pitch -0.75/-0.68 (unchang
       swing fit. Roll responds normally. FINAL: roll ~ -0.9, pitch ~ -0.7 deg. Balancing stopped here.
       (Wheel D tripped the encoder check again on the first start; WHEEL D ON sent. Fix built, not uploaded.)
 
+NOTE  2026-11-01: 11 g laser pointer mounted ~290 mm above the IMU, centred (expected CG rise ~0.7 mm). Swing fit, then rest tilt at the tape markers.
+
+2026-11-01 13:38:17  (90 rows, 44 s)
+roll: period  3.12 s, swing 1.24 deg, rest -0.32 deg, fit rms 0.17
+pitch: period  2.99 s, swing 3.20 deg, rest +1.71 deg, fit rms 0.31
+centre of mass 12.09 mm below the bearing centre (11.60 roll / 12.58 pitch), off-centre x +0.360 mm, y +0.068 mm
+  level x:   1802 g mm = 20 g by  90.1 mm toward -x (toward wheel C)
+  level y:    341 g mm = 20 g by  17.1 mm toward -y (toward wheel D)
+  raise:  60449 g mm to reach the bearing centre (a mass dm added h above it raises the CG by ~dm h / m)
+
+2026-11-01 13:39:28  DEMO LEVEL rest tilt: roll -0.63 deg, pitch +1.35 deg, yaw  -141.1 deg   (# DEMO LEVEL STOPPED: armed 26.5 s, rest tilt held 8.5 s, roll -0.64 pitch 1.53 deg)
+
+NOTE  2026-11-01: 2 washers AD -> CD (pitch trim); +126 g at 255 mm above the IMU (raising the CG for tilted targets).
+      Expected: k 0.59 -> 0.28 N m/rad, CG ~5.5 mm below the pivot, swing ~4.6 s (I ~0.148).
+
+2026-11-01 14:16:36  (120 rows, 231 s)
+roll: period  4.70 s, swing 113.28 deg, rest -0.92 deg, fit rms 0.20
+pitch: period  4.63 s, swing 3.58 deg, rest +1.20 deg, fit rms 0.55
+centre of mass 5.33 mm below the bearing centre (5.25 roll / 5.41 pitch), off-centre x +0.112 mm, y +0.085 mm
+  level x:    574 g mm = 20 g by  28.7 mm toward -x (toward wheel C)
+  level y:    437 g mm = 20 g by  21.8 mm toward -y (toward wheel D)
+  raise:  27332 g mm to reach the bearing centre (a mass dm added h above it raises the CG by ~dm h / m)
+  WARNING: poor fit (> 0.4 deg rms): the table was probably touched or turning; repeat the swing.
+
+NOTE  +126 g at 255 mm: swing 4.63-4.70 s, CG ~5.3 mm (k ~0.27 N m/rad). Rest tilt at the markers:
+
+2026-11-01 14:18:16  DEMO LEVEL rest tilt: roll -1.58 deg, pitch +0.75 deg, yaw   +81.1 deg   (# DEMO LEVEL STOPPED: armed 16.7 s, rest tilt held 8.5 s, roll -1.58 pitch 0.65 deg)
+
+NOTE  +1 washer on CD (now 6); removed 48 g of brackets 130 mm below the IMU. Predicted k ~0.22 N m/rad, CG ~4.3 mm,
+      swing ~5.2 s, rest roll ~-0.8 pitch ~-0.3 (if the brackets were symmetric).
+
+2026-11-01 14:53:33  (119 rows, 59 s)
+roll: period  5.36 s, swing 1.75 deg, rest -3.42 deg, fit rms 0.19
+pitch: period  5.14 s, swing 3.29 deg, rest +1.95 deg, fit rms 0.29
+centre of mass 4.22 mm below the bearing centre (4.05 roll / 4.39 pitch), off-centre x +0.144 mm, y +0.252 mm
+  level x:    732 g mm = 20 g by  36.6 mm toward -x (toward wheel C)
+  level y:   1281 g mm = 20 g by  64.1 mm toward -y (toward wheel D)
+  raise:  21483 g mm to reach the bearing centre (a mass dm added h above it raises the CG by ~dm h / m)
+
+NOTE  Swing 5.14-5.36 s, CG ~4.2 mm. Rest tilt at the markers:
+
+2026-11-01 14:55:18  DEMO LEVEL rest tilt: roll -2.93 deg, pitch +0.79 deg, yaw   +61.5 deg   (# DEMO LEVEL STOPPED: armed 54.8 s, rest tilt held 8.4 s, roll -2.87 pitch 0.79 deg)
+
+NOTE  Removed the 126 g top weight; two 55 g horizontal screws along y at 235 mm (CoM 60 mm out), 5 x 6.5 g nuts each:
+      B side ~45 mm, D side ~78 mm. Predicted CG ~2.4 mm, swing ~6.9 s, roll ~0, pitch ~+1.4.
+
+2026-11-01 15:15:11  (150 rows, 75 s)
+roll: period 69.63 s, swing 61.20 deg, rest +46.45 deg, fit rms 13.88  (only 1.1 periods recorded: use --seconds 244)
+pitch: period 19.68 s, swing 44.26 deg, rest -0.97 deg, fit rms 4.80
+centre of mass 0.16 mm below the bearing centre (0.02 roll / 0.30 pitch), off-centre x -0.003 mm, y -0.117 mm
+  level x:     14 g mm = 20 g by   0.7 mm toward +x (toward wheel A)
+  level y:    602 g mm = 20 g by  30.1 mm toward +y (toward wheel B)
+  raise:    830 g mm to reach the bearing centre (a mass dm added h above it raises the CG by ~dm h / m)
+  WARNING: poor fit (> 0.4 deg rms): the table was probably touched or turning; repeat the swing.
+
+NOTE  5+5 nuts tipped the table (CG above the pivot; the removed 126 g must have sat lower than 255 mm). Now 3+3 nuts
+      (B ~35 mm, D ~68 mm), +1 washer on CD (7).
+
+2026-11-01 15:24:07  (176 rows, 89 s)
+roll: period  5.88 s, swing 1.70 deg, rest +6.26 deg, fit rms 0.42
+pitch: period  5.53 s, swing 4.10 deg, rest +3.79 deg, fit rms 0.50
+centre of mass 3.56 mm below the bearing centre (3.34 roll / 3.77 pitch), off-centre x +0.235 mm, y -0.387 mm
+  level x:   1206 g mm = 20 g by  60.3 mm toward -x (toward wheel C)
+  level y:   1985 g mm = 20 g by  99.3 mm toward +y (toward wheel B)
+  raise:  18247 g mm to reach the bearing centre (a mass dm added h above it raises the CG by ~dm h / m)
+  WARNING: poor fit (> 0.4 deg rms): the table was probably touched or turning; repeat the swing.
+
+NOTE  3+3 nuts + CD washer: swing 5.5-5.9 s (CG ~3.6 mm, poor fit). Rest tilt at the markers:
+
+2026-11-01 15:25:58  DEMO LEVEL rest tilt: roll +5.58 deg, pitch +2.62 deg, yaw  +148.8 deg   (# DEMO LEVEL STOPPED: armed 20.0 s, rest tilt held 8.5 s, roll 5.71 pitch 2.60 deg)
+
+NOTE  Rest at markers was roll +5.58, pitch +2.62 (removed top weight must have been ~15 mm off-centre). Added 2 washers
+      (14 g) on BC; nuts now B ~55 mm, D ~41 mm (3 each). Predicted roll ~+0.35, pitch ~+0.2.
+
+2026-11-01 15:30:14  DEMO LEVEL rest tilt: roll +0.32 deg, pitch -0.05 deg, yaw  +156.7 deg   (# DEMO LEVEL STOPPED: armed 17.0 s, rest tilt held 8.4 s, roll 0.41 pitch -0.05 deg)
+
+NOTE  Rest at markers roll +0.32, pitch -0.05. Then +2 nuts per side (5 each, 32.5 g): D group at 44 mm, B group at 53 mm.
+      Predicted CG ~2.6 mm, swing ~6.8 s.
+
+2026-11-01 15:38:53  (176 rows, 89 s)
+roll: period  6.57 s, swing 1.73 deg, rest +0.07 deg, fit rms 0.25
+pitch: period  6.71 s, swing 1.10 deg, rest -4.84 deg, fit rms 0.24
+centre of mass 2.61 mm below the bearing centre (2.67 roll / 2.56 pitch), off-centre x -0.220 mm, y -0.003 mm
+  level x:   1140 g mm = 20 g by  57.0 mm toward +x (toward wheel A)
+  level y:     17 g mm = 20 g by   0.8 mm toward +y (toward wheel B)
+  raise:  13508 g mm to reach the bearing centre (a mass dm added h above it raises the CG by ~dm h / m)
+
+NOTE  Swing 6.57-6.71 s, CG 2.61 mm (as predicted). Swing-fit rest pitch -4.8 (away from the markers). Rest at markers:
+
+2026-11-01 15:42:16  DEMO LEVEL rest tilt: roll +0.05 deg, pitch +1.65 deg, yaw  +164.3 deg   (# DEMO LEVEL STOPPED: armed 12.8 s, rest tilt held 8.4 s, roll -0.26 pitch 1.89 deg)
+
+NOTE  (The +1.65 pitch reading above was AFTER moving one 7 g washer BC -> AB.) Room-torque check at ~2.6 mm: rest tilt
+      at the markers, then ~90 deg turns.
+
+2026-11-01 15:44:42  DEMO LEVEL rest tilt: roll -7.16 deg, pitch +3.34 deg, yaw  +152.8 deg   (# DEMO LEVEL STOPPED: armed 19.3 s, rest tilt held 10.6 s, roll -6.95 pitch 3.30 deg)
+
+2026-11-01 15:45:27  DEMO LEVEL rest tilt: roll -7.28 deg, pitch +3.77 deg, yaw  +127.4 deg   (# DEMO LEVEL STOPPED: armed 22.7 s, rest tilt held 10.7 s, roll -7.31 pitch 3.71 deg)
+
+NOTE  Readings jumped to roll -7.2/-7.3, pitch +3.3/+3.8 (a mass shift while lining up). Table checked/secured; two
+      readings at the markers:
+
+2026-11-01 15:47:02  DEMO LEVEL rest tilt: roll -5.70 deg, pitch +3.23 deg, yaw  +156.9 deg   (# DEMO LEVEL STOPPED: armed 21.1 s, rest tilt held 10.3 s, roll -5.93 pitch 3.24 deg)
+
+2026-11-01 15:47:31  DEMO LEVEL rest tilt: roll -6.91 deg, pitch +2.74 deg, yaw  +150.8 deg   (# DEMO LEVEL STOPPED: armed 21.1 s, rest tilt held 10.8 s, roll -6.81 pitch 2.73 deg)
+
+NOTE  Avg before: roll -6.4, pitch +3.0. Removed the 7 g AB washer; D group 44 -> 75 mm. Predicted roll ~-0.4, pitch ~+1.3.
+
+2026-11-01 15:51:47  DEMO LEVEL rest tilt: roll +7.50 deg, pitch +7.39 deg, yaw  +143.4 deg   (# DEMO LEVEL STOPPED: armed 22.4 s, rest tilt held 10.4 s, roll 7.61 pitch 7.47 deg)
+
+2026-11-01 15:52:20  DEMO LEVEL rest tilt: roll +8.21 deg, pitch +6.19 deg, yaw  +150.7 deg   (# DEMO LEVEL STOPPED: armed 25.3 s, rest tilt held 10.4 s, roll 8.32 pitch 6.19 deg)
+
+NOTE  After AB washer off + D group to 75 mm: rest roll +7.5/+8.2, pitch +7.4/+6.2 (predicted -0.4/+1.3). Swing fit:
+
+NOTE  The table TIPPED during the swing fit: CG at or above the pivot. The 7 g washer removal (~0.14 mm) cannot explain
+      a 2.6 mm loss; the trim responses (roll 2.3x the prediction) already pointed to CG ~1 mm. Something on the table moves.
+
+NOTE  Removed the innermost nut on each screw (4 per side remain in place). Swing fit:
+
+2026-11-01 16:00:20  (237 rows, 119 s)
+roll: period  6.22 s, swing 1.32 deg, rest +5.54 deg, fit rms 0.64
+pitch: period  6.26 s, swing 4.90 deg, rest -0.52 deg, fit rms 0.63
+centre of mass 2.97 mm below the bearing centre (2.99 roll / 2.95 pitch), off-centre x -0.027 mm, y -0.287 mm
+  level x:    138 g mm = 20 g by   6.9 mm toward +x (toward wheel A)
+  level y:   1477 g mm = 20 g by  73.9 mm toward +y (toward wheel B)
+  raise:  15300 g mm to reach the bearing centre (a mass dm added h above it raises the CG by ~dm h / m)
+  WARNING: poor fit (> 0.4 deg rms): the table was probably touched or turning; repeat the swing.
+
+NOTE  Swing 6.2 s, CG ~3.0 mm (rough fit). Wrapping up: rest-tilt readings to level the table, then stop.
+
+2026-11-01 16:02:48  DEMO LEVEL rest tilt: roll +5.15 deg, pitch -0.09 deg, yaw   +91.1 deg   (# DEMO LEVEL STOPPED: armed 19.7 s, rest tilt held 10.5 s, roll 5.02 pitch -0.22 deg)
+
+2026-11-01 16:03:18  DEMO LEVEL rest tilt: roll +5.09 deg, pitch -0.31 deg, yaw   +58.4 deg   (# DEMO LEVEL STOPPED: armed 22.3 s, rest tilt held 10.5 s, roll 4.92 pitch -0.27 deg)
+
+NOTE  Rest roll +5.1, pitch -0.2 (two readings). D group moved ~30 mm back in. Reading:
+
+2026-11-01 16:05:33  DEMO LEVEL rest tilt: roll +0.45 deg, pitch -2.30 deg, yaw  +139.9 deg   (# DEMO LEVEL STOPPED: armed 17.2 s, rest tilt held 10.5 s, roll 0.42 pitch -2.20 deg)
+
+NOTE  D group back in ~30 mm: roll +0.45, pitch -2.30. STOPPED here (roughly level). Final today: 4 nuts per screw
+      (B group ~53 mm, D ~45-48 mm), washers CD 7, AD 1, BC 1 (7 g), AB 0; 48 g brackets and the 126 g top weight off;
+      laser on. CG ~3 mm below the pivot (swing ~6.2 s, k ~0.15 N m/rad).
+

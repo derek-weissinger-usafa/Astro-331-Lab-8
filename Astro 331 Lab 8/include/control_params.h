@@ -271,6 +271,47 @@ constexpr float kSlewTolDeg = 1.0f;          // requirement: +/-1 deg in roll, p
 constexpr float kSlewSettleS = 1.0f;         // within tolerance this long = "reached"
 constexpr float kSlewSettleTimeoutS = 20.0f; // give up waiting and hold anyway (marked not settled)
 constexpr float kSlewHoldS = 5.0f;           // requirement: hold each attitude 5 s
+// SLEW TILT (slew_test.h, 2026-11-01): tilted targets on a table balanced near neutral. Targets are
+// roll/pitch OFFSETS from the scanned rest tilt (deg) and yaw relative to the start; SLEW TSET.
+// Each degree of offset costs k*1 deg of wheel torque for as long as it is held (k = GRAV_K).
+constexpr float kSlewTiltTargets[kSlewNumTargets][3] = {
+    {2.0f, 0.0f, 45.0f},
+    {0.0f, -2.0f, 135.0f},
+    {-1.5f, 1.5f, -135.0f},
+    {0.0f, 0.0f, 0.0f},  // back to rest at the start heading (holding it after the test is free)
+};
+constexpr float kTiltMaxOffsetDeg = 8.0f;
+// Faster slews in SLEW TILT: a target's tilt rides along for half of each slew, so slew time is most
+// of its momentum cost (simulation: 2x the slew rate passes +-2 deg at a 1 mm CG height, +-3 deg at
+// 0.5 mm; 0.1 rad/s passed only +-1 deg / +-2 deg). Yaw momentum at 0.2 rad/s ~0.016 N m s, ~18 rad/s per wheel.
+constexpr float kTiltSlewMaxRateRadS = 0.2f;
+constexpr float kTiltSlewMaxAccelRadS2 = 0.05f;
+constexpr float kGravStiffness = 0.0f;        // N m/rad; 0 = unknown: SET GRAV_K before SLEW TILT
+constexpr float kTiltScanSkipS = 2.0f;        // scan samples ignored at the start (s)
+// During the scan the roll/pitch reference FOLLOWS a low-pass of the measured tilt (with its rate),
+// so the slow drift of the rest tilt as the table turns (room-fixed torque / k: ~1.7 deg at 1 mm for
+// 1.5 mN m) is followed, not damped; only faster swinging is damped. Damping the drift instead cost
+// the wheels ~Kd * drift rate the whole scan and hit the wheel limit in simulation.
+constexpr float kTiltScanTrackTauS = 2.0f;
+// Scan turn rate (peak of the cosine profile). The drift the damping still sees scales with it, so
+// slower is cheaper in momentum: 0.05 rad/s = a 197 s scan.
+constexpr float kTiltScanRateRadS = 0.05f;
+// Momentum leak in the damping-only modes (SLEW YAW, the SLEW TILT scan): the roll/pitch reference
+// rate gets h_xy / (Kd kMomentumLeakTauS), i.e. the controller adds +h_xy/kMomentumLeakTauS of torque
+// and the wheels' x/y momentum decays with this time constant instead of integrating forever. Without
+// it, damping on a rate with a small bias (x/y gyro bias error ~0.05 deg/s) is a steady torque
+// Kd*bias (~0.5-0.7 mN m) that gravity holds still and the wheels supply until they saturate:
+// DEMO_0012's SLEW TILT scan hit the wheel limit after 40 s. With it, h_xy settles at
+// ~Kd*bias*tau (~5 mN m s) and gravity takes the torque with a slight tilt.
+constexpr float kMomentumLeakTauS = 10.0f;
+constexpr float kUnloadTauS = 4.0f;           // momentum unloading time constant (s)
+constexpr float kUnloadMaxDeg = 3.0f;         // largest unloading tilt offset
+constexpr float kUnloadRateDegS = 1.0f;       // unloading offset rate limit
+constexpr float kUnloadDoneFrac = 0.1f;       // done when |h_xy| < this fraction of the capacity ...
+constexpr float kUnloadDoneS = 1.0f;          // ... for this long
+constexpr float kUnloadTimeoutS = 30.0f;
+constexpr float kTiltCapMarginRadS = 10.0f;   // capacity counted up to kDemoWheelAbortRadS - this
+constexpr float kTiltBudgetFrac = 0.7f;       // refuse a target needing more than this of the capacity
 
 // ---- Wheel failure: dead-motor detection + FAULT TEST (requirement 3; wheel_fault.h) ----
 // Drive effort e = duty - speed/kWheelFreeSpeedRadS (~ motor current / stall current). A working

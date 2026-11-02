@@ -55,6 +55,10 @@
 //   SLEW YAW       stretch requirement as this pendulous table can do it: the 4 targets' yaws only,
 //                  roll/pitch left at the rest tilt (damped, as DEMO LEVEL). Graded like SLEW TEST,
 //                  roll/pitch from the rest tilt. Idle only; STOP ends it.
+//   SLEW TILT      tilted targets on a table balanced near neutral (slew_test.h): 360 deg rest-tilt
+//                  scan, then each target = rest tilt + (roll, pitch) offset at its heading, with
+//                  momentum unloading between targets. Needs SET GRAV_K. Idle only; STOP ends it.
+//   SLEW TSET <1-4> <droll> <dpitch> <yaw>  change a SLEW TILT target (offsets from the rest tilt, deg).
 //   SLEW SET <1-4> <roll> <pitch> <yaw>  change a target (deg; yaw relative to the start heading;
 //                  tilt <= kSlewMaxTiltDeg). Idle only.  SLEW LIST  print the targets.
 //   FAULT TEST <A-D> [s]  requirement 3: after s seconds Armed (default kFaultDelayS = 10) wheel X's
@@ -68,7 +72,7 @@
 //   RAW ON | RAW OFF  USB only in practice: stream one raw row per magnetometer sample (~100 Hz)
 //                  instead of the 20 Hz estimator CSV (magnetometer calibration data, see main.cpp)
 enum class Cmd : uint8_t { None, Arm, Disarm, Kill, Status, Ping, Test, Speed, Counts, Zero,
-                           BeginStatic, DemoSpin, DemoLevel, Stop, Calibrate, MagMap, MagTest, RawOn, RawOff, Wheel, MagAidOn, MagAidOff, Kick, Bias, Set, Get, StepTest, LevelZero, SlewTest, SlewYaw, SlewSet, SlewList, FaultTest, FaultClear, Unknown };
+                           BeginStatic, DemoSpin, DemoLevel, Stop, Calibrate, MagMap, MagTest, RawOn, RawOff, Wheel, MagAidOn, MagAidOff, Kick, Bias, Set, Get, StepTest, LevelZero, SlewTest, SlewYaw, SlewTilt, SlewSet, SlewTSet, SlewList, FaultTest, FaultClear, Unknown };
 
 struct Command {
   static constexpr int kAllWheels = 4;

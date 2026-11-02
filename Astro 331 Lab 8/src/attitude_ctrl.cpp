@@ -44,7 +44,7 @@ Vec3 AttitudeController::update(const Quat& q, const Vec3& omega, float dt, cons
   const Vec3 Iw = {I[0] * omega.x, I[1] * omega.y, I[2] * omega.z};
   const Vec3 gyro = cross(omega, Iw + hWheels);
 
-  return {-kp_.x * thetaE_.x - kd_.x * (omega.x - wr.x) - ki_.x * integral_.x + I[0] * ar.x + gyro.x,
-          -kp_.y * thetaE_.y - kd_.y * (omega.y - wr.y) - ki_.y * integral_.y + I[1] * ar.y + gyro.y,
-          -kp_.z * thetaE_.z - kd_.z * (omega.z - wr.z) - ki_.z * integral_.z + I[2] * ar.z + gyro.z};
+  return {-kp_.x * thetaE_.x - kd_.x * (omega.x - wr.x) - ki_.x * integral_.x + I[0] * ar.x + gyro.x + ff_.x,
+          -kp_.y * thetaE_.y - kd_.y * (omega.y - wr.y) - ki_.y * integral_.y + I[1] * ar.y + gyro.y + ff_.y,
+          -kp_.z * thetaE_.z - kd_.z * (omega.z - wr.z) - ki_.z * integral_.z + I[2] * ar.z + gyro.z + ff_.z};
 }

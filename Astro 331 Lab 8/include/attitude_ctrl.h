@@ -23,7 +23,12 @@ class AttitudeController {
     wRef_ = wRef;
     aRef_ = aRef;
   }
-  void reset() { integral_ = {0.0f, 0.0f, 0.0f}; }
+  void reset() {
+    integral_ = {0.0f, 0.0f, 0.0f};
+    ff_ = {0.0f, 0.0f, 0.0f};
+  }
+  // Extra body torque added to the output (N m): SLEW TILT's gravity feedforward. reset() clears it.
+  void setFeedforward(const Vec3& t) { ff_ = t; }
 
   // omega: bias-corrected body rate (rad/s). hWheels: total wheel angular momentum in the body
   // frame (N m s). Returns desired body torque (N m).
@@ -39,5 +44,6 @@ class AttitudeController {
   Vec3 aRef_{0.0f, 0.0f, 0.0f};
   Vec3 kp_, kd_, ki_;
   Vec3 integral_{0.0f, 0.0f, 0.0f};
+  Vec3 ff_{0.0f, 0.0f, 0.0f};
   Vec3 thetaE_{0.0f, 0.0f, 0.0f};
 };

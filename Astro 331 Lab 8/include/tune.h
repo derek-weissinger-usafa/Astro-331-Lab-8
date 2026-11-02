@@ -23,6 +23,7 @@ extern float magHard[3];    // table hard iron, body x/y/z, uT       (params::kM
 extern float imuRoll0Deg;   // IMU roll/pitch with the deck level    (params::kImuMount*Deg; LEVEL ZERO)
 extern float imuPitch0Deg;
 extern float gyroScaleZ;
+extern float gravK;         // gravity stiffness for SLEW TILT, N m/rad  (params::kGravStiffness)
 extern float magRoom[4];     // room distortion c1, s1, c2, s2, deg     (params::kMagRoomCorrDeg; mag_aid.h)    // yaw gyro scale (true / measured)         (params::kGyroScaleZ)
 
 struct Param {
