@@ -23,8 +23,13 @@ plt.rcParams.update({'font.size': 13, 'axes.titlesize': 13, 'axes.labelsize': 13
                      'figure.dpi': 150, 'axes.edgecolor': '#444', 'legend.framealpha': 0.9})
 
 
-def save(fig, name):
-    fig.tight_layout(pad=0.6)
+def save(fig, name, title=None):
+    # title: the test and its conditions (course guidance: titles, units, legends, test conditions, limits)
+    if title:
+        fig.suptitle(title, fontsize=13, fontweight='bold', y=0.99)
+        fig.tight_layout(pad=0.6, rect=(0, 0, 1, 0.94))
+    else:
+        fig.tight_layout(pad=0.6)
     fig.savefig(os.path.join(OUT, name))
     plt.close(fig)
     print('wrote', name)
@@ -112,7 +117,8 @@ def d1_magtest():
     ax.text(40, -4.55, 'gyro alone: −5.7 °/h', fontsize=12, color=RED, fontweight='bold')
     ax.text(34, 1.35, 'with the aid: 36 / 37 steps within ±1°', fontsize=12, color=BLUE, fontweight='bold')
     ax.legend(loc='lower left')
-    save(fig, 'd1_magtest.png')
+    save(fig, 'd1_magtest.png',
+         'MAG TEST run 1 (MAGTEST_0001, 10-30): table clamped, wheels stepped through 14 direction patterns')
 
 
 # ---------------------------------------------------------------- d2 balance (slide 10)
@@ -146,9 +152,10 @@ def d2_balance():
     ax.set_ylim(-14, 8)
     ax.set_xlabel('rest-tilt reading, in order (DEMO LEVEL, 10-31 session)')
     ax.set_ylabel('rest tilt (deg)')
-    ax.text(0.3, 4.1, '±5° comfortable for DEMO LEVEL', fontsize=10.5, color=GREEN)
-    ax.legend(loc='upper center', ncol=2)
-    save(fig, 'd2_balance.png')
+    ax.text(10.6, 4.1, '±5° comfortable for DEMO LEVEL', fontsize=10.5, color=GREEN)
+    ax.legend(loc='lower center', ncol=2)
+    save(fig, 'd2_balance.png',
+         'Rest tilt after each trim move: DEMO LEVEL on the air bearing, 10-31 balance session')
 
 
 # ---------------------------------------------------------------- d3 laser holds (slide 11)
@@ -171,7 +178,8 @@ def d3_laser_holds():
     ax.set_ylabel('laser heading change (deg)')
     ax.text(3, 0.38, 'band = ±1° requirement', fontsize=10.5, color=GREEN)
     ax.legend(loc='lower left')
-    save(fig, 'd3_laser_holds.png')
+    save(fig, 'd3_laser_holds.png',
+         'DEMO LEVEL heading holds on the air bearing, 11-01: laser on a wall scale at R = 2.48 m')
 
 
 # ---------------------------------------------------------------- d4 heading leak (slide 12)
@@ -187,6 +195,7 @@ def d4_heading_leak():
     a.set_xticks(x); a.set_xticklabels([r for r, _ in runs], fontsize=11)
     band(a); a.axhline(0, color='k', lw=0.6)
     a.set_ylim(-2.5, 3.0)
+    a.text(-0.45, -0.85, '±1° requirement', fontsize=10.5, color=GREEN)
     a.set_ylabel('laser error after 360° of slews (deg)')
     a.set_title('Six full-turn slews on 11-01, in order', fontsize=12.5)
     b = ax[1]
@@ -204,7 +213,8 @@ def d4_heading_leak():
     b.set_title('Estimator vs its own gyro input', fontsize=12.5)
     b.legend(loc='upper right', fontsize=10)
     b.set_ylim(-0.3, 5.2)
-    save(fig, 'd4_heading_leak.png')
+    save(fig, 'd4_heading_leak.png',
+         'Full-turn SLEW YAW runs on the air bearing, 11-01: laser (R = 2.48 m) vs logged gyro and estimate')
 
 
 # ---------------------------------------------------------------- d5 SD stall (slide 13)
@@ -230,7 +240,8 @@ def d5_sd_stall():
     ax[2].set_xlabel('seconds after arming (DEMO_0016, first arm after a boot)')
     for a in ax:
         a.tick_params(labelsize=11)
-    save(fig, 'd5_sd_stall.png')
+    save(fig, 'd5_sd_stall.png',
+         'First arm after a boot (DEMO_0016, 11-01): wheel data from the 100 Hz SD log')
 
 
 # ---------------------------------------------------------------- DEMO ALL (slides 14-16)
@@ -278,7 +289,8 @@ def demo_all():
     ax[2].legend(loc='lower left', ncol=4, fontsize=10)
     for axx in ax:
         axx.tick_params(labelsize=11)
-    save(fig, 'd6_demo_all.png')
+    save(fig, 'd6_demo_all.png',
+         'DEMO ALL (DEMO_0020, 11-01 23:13): one armed run on the air bearing, 100 Hz log')
 
     # d7 requirement 2
     fig, ax = plt.subplots(1, 2, figsize=(11, 3.8), gridspec_kw={'width_ratios': [1.15, 1]})
@@ -306,7 +318,8 @@ def demo_all():
     ax[1].set_ylabel('max |yaw error| in 5 s hold (deg)')
     ax[1].set_title('Each target reached and held', fontsize=12.5)
     ax[1].tick_params(axis='x', labelsize=11)
-    save(fig, 'd7_req2.png')
+    save(fig, 'd7_req2.png',
+         'DEMO ALL part 2 (DEMO_0020): four slews through 360°, laser at R = 2.48 m')
 
     # d8 requirement 3
     w0, w1 = T['inj'] - 5, min(T['end'] + 2, t[-1])
@@ -317,6 +330,7 @@ def demo_all():
     for c, lab, colr in [('err_roll_deg', 'roll', BLUE), ('err_pitch_deg', 'pitch', RED), ('err_yaw_deg', 'yaw', INK)]:
         ax[0].plot(tt, s[c][m], color=colr, lw=1.6, label=lab)
     ax[0].set_ylim(-1.25, 1.25); ax[0].set_ylabel('attitude error\n(deg)')
+    ax[0].text(12, -0.95, '±1° requirement', fontsize=10.5, color='#9c5a12')
     ax[0].legend(loc='lower right', ncol=3, fontsize=10)
     for w in 'ABCD':
         ax[1].plot(tt, s[f'motor_{w.lower()}_measured_rate_rpm'][m] * RPM, color=COL[w], lw=1.6, label=f'wheel {w}')
@@ -330,7 +344,8 @@ def demo_all():
     ax[0].text(0.3, 1.02, 'motor cut', fontsize=11, color='k')
     ax[0].text(det + 0.3, -1.12, f'detected {det:.2f} s later', fontsize=11, color='#c98a12')
     ax[0].text(12, 0.6, 'B coasts; A, C, D hold within 0.36° for 30 s', fontsize=12, fontweight='bold')
-    save(fig, 'd8_req3.png')
+    save(fig, 'd8_req3.png',
+         "DEMO ALL part 3 (DEMO_0020): wheel B's motor cut at t = 0 without telling the controller")
 
 
 if __name__ == '__main__':

@@ -1,7 +1,13 @@
 # Briefing guide: Final Presentation
 
-For presenting the 20 slides of `Astro 331 Lab 8_2_3 Body Final Pres.pptx` (slides 21 on are backup, not presented).
-Target 20–30 minutes: about 1–1.5 minutes per slide, a little more on the DEMO ALL slides.
+For presenting the 22 slides of `Astro 331 Lab 8_2_3 Body Final Pres.pptx` (slides 23 on are backup, not presented).
+Target ≈ 20 minutes plus ≈ 5 minutes of instructor questions (course guidance): under a minute per slide on
+average; keep slides 1, 9, 10 and 22 short to give the DEMO ALL slides (16–18) more time. Every team member presents
+and must be able to defend the engineering.
+The deck follows the course's final-presentation guidance (`Reports/Astro_331_Final_Presentation_Guidance.pptx`):
+every result is MEASURE / COMPARE / EXPLAIN / IMPROVE, the requirement table gives test method, measured outcome and
+final status, and the talk answers the guidance's five questions: what did you build (slides 9–10), how well did it
+perform (11–18), what passed (3, 19), what failed and what did you fix (11–15, 19), what did you learn (20–21).
 Each section has a short script, an explanation of every item on the slide, and likely instructor questions with
 answers. Code references are in the PlatformIO project (`Astro 331 Lab 8/`); the full record is `PROGRESS_LOG.md`.
 The prelim's `Theory_Briefing_Guide.md` still holds the deeper derivations for slides 4 and 5.
@@ -65,6 +71,9 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 - **Objective box:** 3-DOF reaction-wheel attitude control on the air bearing table, with gyro, accelerometer and
   magnetometer fusion. **Why an air bearing:** the table floats on a thin film of air on a spherical cup, so it can
   rotate in roll, pitch and yaw with almost no friction.
+- **New KestrelSAT capability:** closed-loop 3-axis reaction-wheel control that detects a failed wheel and keeps
+  pointing on the other three, verified against an independent laser. Earlier KestrelSAT labs had no closed-loop
+  3-axis control, no fault tolerance and no independent truth.
 
 ### Likely questions
 | Question | Answer |
@@ -74,24 +83,27 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 
 ---
 
-## Slide 3: Requirements: Verification & Status
+## Slide 3: Requirements: Verification & Final Status
 
 ### The 30-second version
-> "All three threshold requirements are verified on the floating table, all in one run and all against the laser.
-> Heading held to four hundredths of a degree for a minute; after a full turn of slews we came back within five
-> hundredths; and when we cut a wheel's motor the firmware caught it in half a second and held attitude on three wheels.
-> The stretch goal is met for yaw targets; tilted targets need a better-balanced table."
+> "Each row gives the test, what we measured and the verdict. All three threshold requirements pass on the floating
+> table, in one run and against the laser. Heading held to four hundredths of a degree for a minute; after a full turn
+> of slews we came back within five hundredths; and when we cut a wheel's motor the firmware caught it in half a second
+> and held attitude on three wheels. The stretch goal is achieved in part: yaw targets pass; tilted targets need a
+> better-balanced table."
 
-### Row by row
-- **(1) Hold a heading.** Pass criterion: free table, commanded heading, 1 min, |error| < 1°, no visible jitter.
-  Evidence: DEMO ALL part 1 (max 0.04°, jitter 0.01° rms, laser steady) and a 5-minute laser hold within 0.25°.
-- **(2) Attitude to ±1° in all 3 axes.** Evidence: after 360° of slews the laser read 0.05° from where it started
-  (heading); roll and pitch from the accelerometer, σ 0.02° at rest.
-- **(3) Detect a wheel failure and compensate.** Evidence: wheel B's motor cut without telling the controller; detected
-  0.50 s; back within ±1° in 0.5 s; held ≤ 0.36° for 30 s on wheels A, C and D.
-- **Stretch: 4-attitude optimal slew.** SLEW YAW 4/4 (shortest path between headings is a turn about the vertical).
-  The half-circle: tilted targets need the centre of mass within ~1 mm of the pivot (slide 11).
-- **Symbols:** ✔ verified on hardware, ◐ built/simulated or met in part. This was prelim feedback (enlarge, use checkmarks).
+### Row by row (columns: requirement, test method & pass criterion, measured outcome, final status)
+- **(1) Hold a heading: PASS.** Test: DEMO ALL part 1, a DEMO LEVEL hold on the floating table graded 60 s on board,
+  laser read; pass |error| < 1°, no visible jitter or drift. Measured: max 0.04°, jitter 0.01° rms, laser steady; a
+  separate 5-minute laser hold stayed within 0.25°.
+- **(2) Attitude to ±1° in all 3 axes: PASS.** Test: laser vs estimate before and after four slews through 360°.
+  Measured: heading 0.05° off by laser; roll and pitch σ 0.02° at rest from the accelerometer, with no independent
+  truth for them (say so if asked).
+- **(3) Detect a wheel failure and compensate: PASS.** Test: DEMO ALL part 3, wheel B's motor cut without telling the
+  controller; pass: flagged < 1 s, back within ±1° ≤ 10 s, then ±1° for 30 s. Measured: 0.50 s, 0.5 s, ≤ 0.36°.
+- **Stretch, 4-attitude optimal slew: achieved in part.** SLEW YAW 4/4 within 0.13° at the rest tilt (the shortest path
+  between headings is a turn about the vertical). Tilted targets are not achieved: at our balance a held tilt fills a
+  wheel in seconds; they need the centre of mass within ~1 mm of the pivot (slide 12).
 
 ### Likely questions
 | Question | Answer |
@@ -116,7 +128,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 - **BNO085 IMU (yellow):** raw gyro, accelerometer and magnetometer at 100 Hz each; interrupt-driven reads so timing is
   exact. We do our own fusion rather than the chip's black-box output.
 - **MEKF + mag aid:** multiplicative EKF, 6 error states (3 attitude + 3 gyro bias). Gyro predicts; accelerometer corrects
-  roll/pitch; the magnetometer aid can correct heading, but is off at the demo site (slide 10).
+  roll/pitch; the magnetometer aid can correct heading, but is off at the demo site (slide 11).
 - **Attitude PD → Allocation → Wheel PI ×4:** slide 5 (theory) and slide 7 (code).
 - **Fault detector:** watches each wheel's drive and response; a dead motor drops the allocation to three wheels (slide 8).
 - **Table + 4 wheels:** I ω̇ = −ḣ_w − ω × (Iω + h_w) + τ_dist. The table turns opposite to the wheels' momentum change.
@@ -126,7 +138,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 ### Likely questions
 | Question | Answer |
 |---|---|
-| Why your own filter instead of the BNO085's fusion? | We can see and tune every step, track uncertainty, and control how the magnetometer is used. The heading-leak bug (slide 13) could only be found and fixed because we own the filter. |
+| Why your own filter instead of the BNO085's fusion? | We can see and tune every step, track uncertainty, and control how the magnetometer is used. The heading-leak bug (slide 14) could only be found and fixed because we own the filter. |
 | What does "multiplicative" mean? | The quaternion is kept separately; the filter estimates only a small 3-angle error on top and folds it in by rotation, so the quaternion stays a valid rotation. |
 | Why 100 Hz? | Well above the control bandwidth (2 rad/s ≈ 0.3 Hz) and within the IMU's I²C budget; one gyro sample drives one estimator + control step. |
 | What happens if the IMU data stops? | The supervisor disarms after 300 ms without a gyro sample; shorter gaps are integrated with the next sample's rate. Other trips: tilt > 30°, rate > 2 rad/s, wheel > 90 rad/s, KILL. |
@@ -204,7 +216,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 | Why estimate gyro bias? | Uncorrected, the gyro bias integrates straight into attitude error, and it shifts ~0.007 °/s (≈ 25 °/h) while the chip warms up. x/y bias is observable from gravity; z isn't, so it is locked at calibration (hence the 10 min warm-up + CALIBRATE 180). |
 | Why did it leak? | Φ contains −[ω]×: while turning at slew rates, tilt and heading errors rotate into each other, so P builds cross-terms. The optimal gain then "uses" gravity to correct heading through them; with any model mismatch that is a systematic pull. |
 | Isn't the full Kalman gain optimal? | Only if the model is perfect. Gravity physically contains no heading information, so any heading correction from it comes from cross-correlations built on model assumptions. Removing it is the standard "decoupled" accelerometer update. |
-| How did you find it? | The laser disagreed with the estimator after full turns, and the error flipped sign when we turned the other way. Integrating the logged gyro gave 363–364° where the estimator said 360°: the gyro was right, the filter was removing rotation (slide 13). |
+| How did you find it? | The laser disagreed with the estimator after full turns, and the error flipped sign when we turned the other way. Integrating the logged gyro gave 363–364° where the estimator said 360°: the gyro was right, the filter was removing rotation (slide 14). |
 | How did you choose 1.0045? | Replayed the logged runs on the PC through the fixed estimator (`tools/replay`, the firmware's own code) and fitted the scale that matches the laser in both directions; residual ±0.1° plus a common ~0.3° offset. |
 | Why didn't simulation catch it? | The simulation used a perfect estimate for control; the estimator was checked separately but not over full-turn slews against long-range truth. Lesson: verify against independent truth on the hardware. |
 | Where is the magnetometer? | Its heading-only update is the same pattern with the gain rotated about vertical only (backup: Code: Magnetometer Heading Update); off at the demo site. |
@@ -272,7 +284,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 | Question | Answer |
 |---|---|
 | Is a simulated failure realistic? | The motor really gets zero current (the PWM is changed under the controller); only the bookkeeping knows. We also had a real one: wheel D's encoder lead opened in a run and the detector took D out (backup). |
-| Could a healthy wheel be flagged? | Early on, yes: wheels stuck by static friction at rest. We raised the threshold at standstill to 0.4; replaying 230 starts gives 0 false flags. We also skip the check across loop stalls (slide 14). |
+| Could a healthy wheel be flagged? | Early on, yes: wheels stuck by static friction at rest. We raised the threshold at standstill to 0.4; replaying 230 starts gives 0 false flags. We also skip the check across loop stalls (slide 15). |
 | Why not watch the speed error? | A speed error also appears when the controller asks for big changes or the wheel is near its limit; comparing effort with response is specific to "pushing but nothing happens". |
 | What if two wheels fail? | Two wheels cannot span three axes; the allocation fails and the supervisor disarms (`ALLOC`). |
 
@@ -304,16 +316,38 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 ### Likely questions
 | Question | Answer |
 |---|---|
-| Why your own fusion instead of the BNO085's? | We can see and tune every step, and we control how the magnetometer is used. The heading-leak bug (slide 13) could only be found and fixed because we own the filter. |
+| Why your own fusion instead of the BNO085's? | We can see and tune every step, and we control how the magnetometer is used. The heading-leak bug (slide 14) could only be found and fixed because we own the filter. |
 | Why separate logic and motor batteries? | Motor current surges can't brown out the Teensy, IMU or radio. The previous build ran its microcontroller from a motor pack and listed that as a possible cause of its oscillations. |
 | Why a 9600 baud radio? | The XBee default and plenty for commands; the full 100 Hz data goes to the SD card, the radio carries a 2 Hz copy. |
 | How accurate is the laser? | ≈ ±0.05° reading; a 1% error in the 2.48 m distance is a 1% error in the angle. Independent of the IMU and the firmware. |
 | Doesn't the table translate? | The bearing is a sphere: the table rotates about a fixed point, so the laser's origin stays put to millimetres while the dot moves centimetres. |
-| Why not the magnetometer as truth? | It is disturbed by the motors and, at the presentation spot, by nearby steel (up to 14° peak-to-peak, slide 10 / backup). |
+| Why not the magnetometer as truth? | It is disturbed by the motors and, at the presentation spot, by nearby steel (up to 14° peak-to-peak, slide 11 / backup). |
 
 ---
 
-## Slide 10: Data: Magnetometer Yaw Aid (MAG TEST)
+## Slide 10: Hardware: Final Build
+
+### The 30-second version
+> "This is what we built. The table floats on the air-bearing sphere; the 3D-printed deck carries four wheels in a
+> pyramid, the Teensy, the IMU, the radio and five battery packs in printed holders. We set the balance with stacks of
+> washers in printed holders. The laser for heading truth sits on the deck."
+
+### Item by item
+- **Big photo:** the integrated table on the air bearing (10-21, during the first balance trims).
+- **Under the deck:** a wheel and gearmotor at 45°, encoder wiring, trim weight. **Printed battery holder** and its
+  **CAD:** one 3S pack per wheel, at the deck corners for balance. **Trim-washer holder CAD:** washer stacks at fixed
+  seats, so balance moves are repeatable.
+- **Key facts:** frame, wheels, avionics, trim, truth (details on the block diagram, slide 9).
+
+### Likely questions
+| Question | Answer |
+|---|---|
+| What did you build vs inherit? | The sphere, cup and wheel hardware came from the earlier build. We rewired power (separate logic/motor packs), replaced the computer, IMU and radio, printed the holders, and wrote all the firmware. |
+| Why washers? | Cheap, known mass (8 g each), and the holders put them at fixed radii, so a trim move in g·mm is repeatable. |
+
+---
+
+## Slide 11: Data: Magnetometer Yaw Aid (MAG TEST)
 
 ### The 30-second version
 > "Sensor fusion with the magnetometer was part of our objective, so we built a heading aid that only trusts the field
@@ -340,7 +374,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 
 ---
 
-## Slide 11: Data: Balancing the Table
+## Slide 12: Data: Balancing the Table
 
 ### The 30-second version
 > "The table is a pendulum: its centre of mass sits below the bearing's pivot, so gravity pulls it back to a rest tilt.
@@ -367,7 +401,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 
 ---
 
-## Slide 12: Data: Heading Holds by Laser (Req. 1)
+## Slide 13: Data: Heading Holds by Laser (Req. 1)
 
 ### The 30-second version
 > "This is requirement 1 measured against truth. The red line is a hold calibrated only five minutes after power-on: the
@@ -391,7 +425,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 
 ---
 
-## Slide 13: Data: Estimator Heading Leak (Unexpected)
+## Slide 14: Data: Estimator Heading Leak (Unexpected)
 
 ### The 30-second version
 > "This is the most important thing we found this week. Every full-turn slew passed 4 of 4 by the firmware's own
@@ -417,7 +451,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 
 ---
 
-## Slide 14: Data: First-Run Start Failures (Unexpected)
+## Slide 15: Data: First-Run Start Failures (Unexpected)
 
 ### The 30-second version
 > "We lost hours to what looked like wiring faults: at the first arm after every boot, all four wheels were flagged dead
@@ -445,7 +479,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 
 ---
 
-## Slide 15: DEMO ALL: The Whole Run
+## Slide 16: DEMO ALL: The Whole Run
 
 ### The 30-second version
 > "This is the whole demonstration in one plot, from one command. Blue: a heading hold, graded for 60 seconds. Green:
@@ -466,11 +500,11 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 |---|---|
 | Why one command? | Stopping and restarting between tests braked the wheels and kicked the table off its zero; chaining them keeps the momentum and the reference continuous, and the demo is repeatable. |
 | How long does it take? | About 5 minutes including settling; limited by yaw drag filling the wheels. |
-| Requirement 1 slide? | Its numbers are on slide 3 and the laser holds (slide 12); the plot itself is a flat line (backup). |
+| Requirement 1 slide? | Its numbers are on slide 3 and the laser holds (slide 13); the plot itself is a flat line (backup). |
 
 ---
 
-## Slide 16: DEMO ALL: Requirement 2 (Attitude Truth)
+## Slide 17: DEMO ALL: Requirement 2 (Attitude Truth)
 
 ### The 30-second version
 > "After a full turn, the table came back to within five hundredths of a degree of where it started, by the laser.
@@ -492,7 +526,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 
 ---
 
-## Slide 17: DEMO ALL: Requirement 3 (Wheel Failure)
+## Slide 18: DEMO ALL: Requirement 3 (Wheel Failure)
 
 ### The 30-second version
 > "The last part. Wheel B's motor is cut and the controller is not told. Half a second later the detector takes B out of
@@ -515,7 +549,32 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 
 ---
 
-## Slide 18: Lessons Learned
+## Slide 19: Final Results & Limitations
+
+### The 30-second version
+> "In one place: what passed, what we fixed, and what is still limited. Every requirement passed on the table, and
+> the two unexpected failures we found are fixed. The limits are mostly hardware: connectors, the wheel loop sharing a
+> processor loop with the SD card, wheels that can't dump momentum, and a magnetometer we can't use at this spot. Tilted
+> stretch targets remain."
+
+### Column by column
+- **Complete:** requirements 1–3 (laser), stretch SLEW YAW 4/4, DEMO ALL graded on board, heading leak fixed, start
+  failures fixed.
+- **Needs improvement:** wheel-loop pauses ≈ 0.1 s during SD writes; wheel D's encoder lead (reseated, not soldered);
+  loose motor-switch leads; hold time ≈ 5 min before yaw drag fills the wheels; magnetometer aid unusable at the demo
+  spot.
+- **Remaining:** tilted stretch targets (CG ≲ 1 mm), wheel loop on a timer interrupt, momentum dumping (needs thrusters
+  or magnetorquers).
+
+### Likely questions
+| Question | Answer |
+|---|---|
+| Which failure worries you most for a live demo? | Connectors: wheel D's lead and the motor switch cost us the most table time. The checklist (slide 20) covers them, and the firmware catches a real wheel failure. |
+| Why not fix the wheel-loop pauses now? | It means moving the wheel loop to a timer interrupt, which touches the most code. We froze the firmware before the presentation rather than risk a working build. |
+
+---
+
+## Slide 20: Lessons Learned
 
 ### The 30-second version
 > "Five lessons, each with the evidence that taught it. The first is the one we'd tell any future team: measure truth
@@ -535,7 +594,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 
 ---
 
-## Slide 19: Future Work: Next Phase
+## Slide 21: Future Work: Next Phase
 
 ### The 30-second version
 > "Three directions. Replace the PD controller with model-predictive control on the Teensy, so the wheel limits become
@@ -566,7 +625,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 
 ---
 
-## Slide 20: GenAI Use Documentation
+## Slide 22: GenAI Use Documentation
 State plainly what the tool did and what the team did.
 - **Tool:** Claude Code (Opus model).
 - **Firmware:** drafted the estimator and magnetometer aid, controller, allocation, fault detector, IMU driver, logger,
@@ -575,7 +634,8 @@ State plainly what the tool did and what the team did.
 - **Simulation and analysis:** truth models, log replay and balance tools, plots; traced the heading leak and the
   start-up stall from the logs. The team ran every test, read the laser and checked the conclusions.
 - **Team-owned:** hardware, wiring and power, requirements and design decisions, test design and execution, final review.
-- **Record:** `PROGRESS_LOG.md` and the git history.
+- **Record:** the GitHub repository on the slide (github.com/derek-weissinger-usafa/Astro-331-Lab-8): code, logs,
+  reports, `PROGRESS_LOG.md` and the git history. The guidance asks for the link before the presentation.
 
 Likely question: "How do you know the code is right?" Every build was tested on hardware against independent truth
 (laser, hand-turn encoder counts, the level), simulated against a separately written model, and logged at 100 Hz so
@@ -605,7 +665,6 @@ results can be replayed and checked.
 | Wheel failure on the table before DEMO ALL | Data: FAULT TEST on the Air Bearing; Wheel D Encoder Lead (real failure) |
 | Why no tilted targets | Tilted Slews vs. Gravity; SLEW YAW on the Air Bearing; SLEW TILT |
 | Requirement 1 plot from DEMO ALL | DEMO ALL: Requirement 1 |
-| Overall results and open items | Results and Open Items |
 
 ---
 
