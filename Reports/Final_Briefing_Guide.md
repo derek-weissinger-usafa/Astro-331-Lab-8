@@ -278,25 +278,36 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 
 ---
 
-## Slide 9: Hardware: Laser Heading Truth
+## Slide 9: Hardware: System Block Diagram
 
 ### The 30-second version
-> "The estimator can't grade itself: it uses the same gyro it is trying to check. So we mounted an 11-gram laser on the
-> deck and printed a scale for a wall 2.48 metres from the bearing. A tenth of a degree moves the dot 4.3 millimetres,
-> easy to read by eye. Every heading number from here on is checked against this."
+> "Everything on the table runs on one Teensy 4.1. It reads the IMU at 100 Hz, runs the estimator and the controller on
+> every gyro sample, drives four motor drivers, reads four encoders, and logs every sample to its SD card. The ground
+> station only sends commands and watches a 2 Hz copy of the data over the radio. Logic and motors have separate
+> batteries, so a motor surge can't reset the computer. Heading truth comes from outside the system: a laser on the deck
+> and a printed scale on the wall, which is how every heading number in the data slides was checked."
 
-### Item by item
-- **Geometry:** x = R tan θ, R = 2480 mm. 0.1° = 4.3 mm, 0.5° = 21.6 mm, 1° = 43.3 mm.
-- **Scale:** printed by `tools/laser_scale.py`: 0.5° ticks to ±5°, 0.1° ticks within ±1°, positive = counter-clockwise
-  (same sign as the firmware's yaw), with a 100 mm check bar to confirm the print scale.
-- **Use:** line the dot up on 0 before a run; read at each checkpoint (end of the hold, end of the slews, through the
-  failure).
-- **Limits:** heading only; reading resolution ≈ 2 mm ≈ 0.05°; the laser is 11 g, so it barely shifts the balance.
+### Block by block
+- **Ground station:** PC + XBee 3 dongle; ASCII commands (`DEMO ALL`, `STATUS`, `SET` …) and a 2 Hz telemetry stream.
+- **XBee 3:** on the Teensy's Serial8 at 9600 baud (≈ 960 B/s); that baud limits the radio to every 50th log row.
+- **BNO085 IMU:** raw gyro, accelerometer and magnetometer, 100 Hz each, over I²C. The data-ready (INT) and reset (RST)
+  lines let the Teensy read each report as it arrives and restart the chip after an upload; sample loss went to 0.085%.
+- **Teensy 4.1:** 600 MHz Cortex-M7 with a hardware FPU; estimator, controller, allocation, wheel loops, fault detector,
+  safety supervisor and the SD logger, all at 100 Hz.
+- **4× TB9051FTG:** one motor driver per wheel, two PWM inputs each (8 PWM pins).
+- **4× reaction wheels:** Pololu 37D gearmotors, 6.3:1 gearbox, 64 CPR motor encoders = 400 counts per wheel turn.
+- **Power:** logic from a 1S 18650 pack through a 5 V boost; motors from one 12 V 3S pack per wheel, switched on the
+  negative side (one single-pole switch for all four), star ground.
+- **Heading truth (not in the diagram):** an 11 g laser on the deck and a printed scale on a wall 2.48 m away;
+  0.1° = 4.3 mm, read to ≈ 0.05°. Details and plot on the backup slide Hardware: Laser Heading Truth.
 
 ### Likely questions
 | Question | Answer |
 |---|---|
-| How accurate is it? | ≈ ±0.05° reading; the distance error is small (1% of R is 1% of the angle, 0.0005° at 0.05°). Independent of the IMU and the firmware. |
+| Why your own fusion instead of the BNO085's? | We can see and tune every step, and we control how the magnetometer is used. The heading-leak bug (slide 13) could only be found and fixed because we own the filter. |
+| Why separate logic and motor batteries? | Motor current surges can't brown out the Teensy, IMU or radio. The previous build ran its microcontroller from a motor pack and listed that as a possible cause of its oscillations. |
+| Why a 9600 baud radio? | The XBee default and plenty for commands; the full 100 Hz data goes to the SD card, the radio carries a 2 Hz copy. |
+| How accurate is the laser? | ≈ ±0.05° reading; a 1% error in the 2.48 m distance is a 1% error in the angle. Independent of the IMU and the firmware. |
 | Doesn't the table translate? | The bearing is a sphere: the table rotates about a fixed point, so the laser's origin stays put to millimetres while the dot moves centimetres. |
 | Why not the magnetometer as truth? | It is disturbed by the motors and, at the presentation spot, by nearby steel (up to 14° peak-to-peak, slide 10 / backup). |
 
@@ -579,8 +590,9 @@ results can be replayed and checked.
 | The headline numbers in one place | Bottom Line: One Command, All Requirements |
 | How the magnetometer update works | Code: Magnetometer Heading Update |
 | How DEMO ALL chains the parts | Code: DEMO ALL Sequencer |
-| Hardware architecture, power, photos | Build Progress: Hardware (2 slides) |
-| What we did when | Progress: Software Build & Tests (2 tables) |
+| How heading truth is measured (laser geometry, scale) | Hardware: Laser Heading Truth |
+| Battery and washer holders (CAD, photo) | Hardware: Battery & Washer Holders |
+| What we tested when | Test Record: Software & Hardware (2 tables) |
 | Simulation | Simulation: Methods; Wheel Failure (9/9); 4-Attitude Slew |
 | Wheel speed loop quality | Data: Wheel Speed Control |
 | Yaw drift and calibration | Data: Attitude Determination at Rest |
@@ -593,7 +605,7 @@ results can be replayed and checked.
 | Wheel failure on the table before DEMO ALL | Data: FAULT TEST on the Air Bearing; Wheel D Encoder Lead (real failure) |
 | Why no tilted targets | Tilted Slews vs. Gravity; SLEW YAW on the Air Bearing; SLEW TILT |
 | Requirement 1 plot from DEMO ALL | DEMO ALL: Requirement 1 |
-| Overall status | Where We Stand |
+| Overall results and open items | Results and Open Items |
 
 ---
 
