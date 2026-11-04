@@ -55,27 +55,30 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 
 ---
 
-## Slide 2: Why Attitude Control Matters
+## Slide 2: Overview & Objectives
 
 ### The 30-second version
-> "Everything a satellite does depends on pointing. Antennas, solar arrays and cameras only work when aimed, so we have
-> to point. We can only point what we can measure, so we have to know our attitude. And reaction wheels are the parts
-> that wear out: Kepler lost two of four and its primary mission ended, so a wheel failure must not end ours. Those
-> three jobs are our three requirements. The air bearing lets us test the whole loop on the ground."
+> "This is the project in one slide. Overview: we built a three-axis reaction-wheel attitude control system on the small
+> air bearing table, which floats on air and turns almost without friction, like a satellite in orbit. Objectives: hold
+> a commanded attitude with the wheels, and fuse the gyro, accelerometer and magnetometer to know the attitude in any
+> state; those are requirements 1 and 2. Why it matters: antennas, solar arrays and cameras only work when aimed, and
+> reaction wheels are the parts that wear out. Kepler lost two of its four wheels and, with them, its primary mission.
+> Our table keeps pointing when a wheel fails: that is requirement 3, and the new capability beyond earlier KestrelSAT
+> labs."
 
-### Item by item
-- **POINT → Req. 1, hold a heading.** Reaction wheels give fine, continuous torque with no propellant: ideal for holding
-  and slewing.
-- **KNOW → Req. 2, attitude to ±1°.** Sensor fusion turns three imperfect sensors into one estimate: the gyro is smooth
-  but drifts, the accelerometer knows "down" but not heading, the magnetometer knows heading but is disturbed easily.
-- **SURVIVE → Req. 3, detect and compensate.** Kepler (2013) and Hubble's gyros are the classic cautionary tales.
-  Four wheels in a pyramid mean any three still control all three axes.
-- **Objective box:** 3-DOF reaction-wheel attitude control on the air bearing table, with gyro, accelerometer and
-  magnetometer fusion. **Why an air bearing:** the table floats on a thin film of air on a spherical cup, so it can
-  rotate in roll, pitch and yaw with almost no friction.
-- **New KestrelSAT capability:** closed-loop 3-axis reaction-wheel control that detects a failed wheel and keeps
-  pointing on the other three, verified against an independent laser. Earlier KestrelSAT labs had no closed-loop
-  3-axis control, no fault tolerance and no independent truth.
+### Card by card
+- **1 OVERVIEW.** What was built and why an air bearing: the table floats on a thin film
+  of air on a spherical cup, so it rotates in roll, pitch and yaw with almost no friction; four reaction wheels in a
+  pyramid steer it with no propellant, as on a spacecraft.
+- **2 OBJECTIVES (requirements 1 and 2).** The two lab objectives from the brief: reaction-wheel attitude control in all three
+  axes (requirement 1, hold a heading), and sensor fusion to know the attitude in any state (requirement 2, ±1°). The
+  gyro is smooth but drifts, the accelerometer knows "down" but not heading, the magnetometer knows heading but is
+  easily disturbed; fusion combines them.
+- **3 WHY IT MATTERS (requirement 3).** Pointing is every spacecraft's job (antennas at the ground, arrays at the sun,
+  cameras at the target), and reaction wheels are the parts that wear out: Kepler (2012–2013) and Hubble's gyros are
+  the classic cautionary tales. "This table keeps pointing when a wheel fails" is the new KestrelSAT capability:
+  closed-loop 3-axis control with fault tolerance, checked against an independent laser. Earlier labs had none of
+  these. Four wheels in a pyramid mean any three still control all three axes.
 
 ### Likely questions
 | Question | Answer |
