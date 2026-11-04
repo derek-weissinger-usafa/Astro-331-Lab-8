@@ -21,7 +21,7 @@ The prelim's `Theory_Briefing_Guide.md` still holds the deeper derivations for s
 > gyro and accelerometer (and, where the field allows, the magnetometer), a quaternion controller computes a torque,
 > and four wheels in a pyramid produce it, with any three enough to keep control. We verified every requirement on the
 > floating table in a single command, DEMO ALL, against an independent truth: a laser on the table read on a wall
-> 2.48 m away. Getting there, the laser exposed two problems the firmware could not see in itself: the estimator was
+> 2.48 m away. Getting there, the laser exposed two problems the software could not see in itself: the estimator was
 > losing about 1% of every turn, and every first run after a boot failed because the SD card froze the wheel loop.
 > Both are fixed, and the final run passed: heading held to 0.04°, back within 0.05° after a full turn, and a wheel
 > failure caught in half a second."
@@ -93,7 +93,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 ### The 30-second version
 > "Each row gives the test, what we measured and the verdict. All three threshold requirements pass on the floating
 > table, in one run and against the laser. Heading held to four hundredths of a degree for a minute; after a full turn
-> of slews we came back within five hundredths; and when we cut a wheel's motor the firmware caught it in half a second
+> of slews we came back within five hundredths; and when we cut a wheel's motor the software caught it in half a second
 > and held attitude on three wheels. The stretch goal is achieved in part: yaw targets pass; tilted targets need a
 > better-balanced table."
 
@@ -113,7 +113,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 ### Likely questions
 | Question | Answer |
 |---|---|
-| Who decided pass/fail? | The Teensy grades each part against the thresholds in the firmware (`full_demo.cpp`, `wheel_fault.cpp`, `slew_test.cpp`), and the laser is the independent check. They agree. |
+| Who decided pass/fail? | The Teensy grades each part against the thresholds in the software (`full_demo.cpp`, `wheel_fault.cpp`, `slew_test.cpp`), and the laser is the independent check. They agree. |
 | "All three axes" but your truth is heading only? | Yes: the laser measures heading. Roll and pitch come from the accelerometer, which measures gravity directly (0.02° noise at rest, mount offset calibrated with a level). Independent 3-axis truth is in our future work (AprilTags). |
 | Why is the stretch only half-filled? | Tilting a pendulous table costs the wheels steady torque; at our balance a held tilt fills a wheel in seconds. Yaw-only targets meet the requirement's "shortest path" between the four attitudes we could hold. |
 
@@ -222,7 +222,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 | Why did it leak? | Φ contains −[ω]×: while turning at slew rates, tilt and heading errors rotate into each other, so P builds cross-terms. The optimal gain then "uses" gravity to correct heading through them; with any model mismatch that is a systematic pull. |
 | Isn't the full Kalman gain optimal? | Only if the model is perfect. Gravity physically contains no heading information, so any heading correction from it comes from cross-correlations built on model assumptions. Removing it is the standard "decoupled" accelerometer update. |
 | How did you find it? | The laser disagreed with the estimator after full turns, and the error flipped sign when we turned the other way. Integrating the logged gyro gave 363–364° where the estimator said 360°: the gyro was right, the filter was removing rotation (slide 15). |
-| How did you choose 1.0045? | Replayed the logged runs on the PC through the fixed estimator (`tools/replay`, the firmware's own code) and fitted the scale that matches the laser in both directions; residual ±0.1° plus a common ~0.3° offset. |
+| How did you choose 1.0045? | Replayed the logged runs on the PC through the fixed estimator (`tools/replay`, the software's own code) and fitted the scale that matches the laser in both directions; residual ±0.1° plus a common ~0.3° offset. |
 | Why didn't simulation catch it? | The simulation used a perfect estimate for control; the estimator was checked separately but not over full-turn slews against long-range truth. Lesson: verify against independent truth on the hardware. |
 | Where is the magnetometer? | Its heading-only update is the same pattern with the gain rotated about vertical only (backup: Code: Magnetometer Heading Update); off at the demo site. |
 
@@ -281,7 +281,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 - **bad = gained < 25% of predicted;** 0.2 s of bad blocks = dead.
 - **Response:** wheelEnabled = false (allocation over three), coast (zero current), not brake: braking would dump the
   wheel's momentum into the table.
-- **FAULT TEST:** `setSimulatedDead` holds the motor at zero current while the firmware still believes it is driving it:
+- **FAULT TEST:** `setSimulatedDead` holds the motor at zero current while the software still believes it is driving it:
   the detector must find it on its own. Graded on board: detect ≤ 1 s, back within ±1° ≤ 10 s, then ±1° for 30 s.
 - **Bullets on the slide:** no current sensor (current estimated from drive level and speed), healthy or dead (a
   motor driven hard must speed up), coast not brake, FAULT TEST (cuts a motor without telling the controller).
@@ -326,7 +326,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 | Why your own fusion instead of the BNO085's? | We can see and tune every step, and we control how the magnetometer is used. The heading-leak bug (slide 15) could only be found and fixed because we own the filter. |
 | Why separate logic and motor batteries? | Motor current surges can't brown out the Teensy, IMU or radio. The previous build ran its microcontroller from a motor pack and listed that as a possible cause of its oscillations. |
 | Why a 9600 baud radio? | The XBee default and plenty for commands; the full 100 Hz data goes to the SD card, the radio carries a 2 Hz copy. |
-| How accurate is the laser? | ≈ ±0.05° reading; a 1% error in the 2.48 m distance is a 1% error in the angle. Independent of the IMU and the firmware. |
+| How accurate is the laser? | ≈ ±0.05° reading; a 1% error in the 2.48 m distance is a 1% error in the angle. Independent of the IMU and the software. |
 | Doesn't the table translate? | The bearing is a sphere: the table rotates about a fixed point, so the laser's origin stays put to millimetres while the dot moves centimetres. |
 | Why not the magnetometer as truth? | It is disturbed by the motors and, at the presentation spot, by nearby steel (up to 14° peak-to-peak, slide 12 / backup). |
 
@@ -349,7 +349,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 ### Likely questions
 | Question | Answer |
 |---|---|
-| What did you build vs inherit? | The sphere, cup and wheel hardware came from the earlier build. We rewired power (separate logic/motor packs), replaced the computer, IMU and radio, printed the holders, and wrote all the firmware. |
+| What did you build vs inherit? | The sphere, cup and wheel hardware came from the earlier build. We rewired power (separate logic/motor packs), replaced the computer, IMU and radio, printed the holders, and wrote all the software. |
 | Why washers? | Cheap, known mass (8 g each), and the holders put them at fixed radii, so a trim move in g·mm is repeatable. |
 
 ---
@@ -378,7 +378,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 ### Likely questions
 | Question | Answer |
 |---|---|
-| Why does a lost sample matter? | The estimator and the controller step on every gyro sample. A long gap means the attitude is unknown for that time, so the firmware disarms rather than act on stale data. |
+| Why does a lost sample matter? | The estimator and the controller step on every gyro sample. A long gap means the attitude is unknown for that time, so the software disarms rather than act on stale data. |
 | What is the timeout now? | 300 ms (it was 100 ms at the time of this plot). The estimator integrates gaps up to the timeout using the next sample. |
 | Why not use the chip's own fused attitude? | We wanted to see and control every step of the fusion (slide 6); the raw reports also let us log everything at 100 Hz for replay. |
 | Is it fully solved? | Nearly: the BNO085 still pauses 60–90 ms about every two minutes internally, and SD writes still cause short pauses in the wheel loop (slide 16, slide 20). |
@@ -406,7 +406,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 | Question | Answer |
 |---|---|
 | Why do the wheels disturb the magnetometer so much? | Each motor has permanent magnets a few cm from the IMU; their field depends on where each shaft stops (up to ±10° offsets) and adds fast noise when spinning. We mapped it (MAG MAP) and only trust known wheel states. |
-| Why not move the IMU away from the motors? | Not possible on this table (mounting fixed); the firmware works around it. |
+| Why not move the IMU away from the motors? | Not possible on this table (mounting fixed); the software works around it. |
 | So is the magnetometer part of your fusion? | Built and validated on the clamped table, and selectable (`MAG ON`); for the demo it is off because the room field at that spot is distorted. The gyro after a proper calibration holds within 0.25° for 5 minutes, which meets requirement 1 without it. |
 | What would fix it? | An absolute reference that the motors don't disturb: our future work uses AprilTags as a star sensor. |
 
@@ -449,6 +449,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 
 ### Walking the plot
 - Each line is a DEMO LEVEL hold, plotted from its first laser reading; green band = ±1°.
+- **Legend:** red = 5 min calibration; blue and green = 10 min calibration.
 - **Red:** −0.78° in 2.5 min ≈ 15 °/h: the BNO085's z bias shifts ~0.007 °/s over the first ~5 minutes after power-on.
 - **Blue (5 min):** −0.20 to −0.45° band (0.25°), no trend; the small wander includes wheel-pattern switches.
 - **Green (live run, 3 min):** within 0.15°.
@@ -466,7 +467,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 ## Slide 15: Data: Estimator Heading Leak (Unexpected)
 
 ### The 30-second version
-> "This is the most important thing we found this week. Every full-turn slew passed 4 of 4 by the firmware's own
+> "This is the most important thing we found this week. Every full-turn slew passed 4 of 4 by the software's own
 > grading, while the laser said the table ended up to 2.3 degrees off, and by different amounts each run. Turning the
 > other way flipped the sign, which pointed at rotation being lost. Integrating the logged gyro showed 363 to 364 degrees
 > where the estimator said 360: the gyro was right and the estimator was removing about one percent of every turn.
@@ -506,7 +507,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 - **Fix:** the log file is opened and its first sectors written before arming (wheels still stopped); a wheel-loop step
   longer than 50 ms skips the fault checks and uses a normal step. The next first-arm run (DEMO ALL) started cleanly.
 - **Still to do:** routine SD writes still pause the wheel loop ~0.1 s about once a second; moving the wheel loop to a
-  timer interrupt removes that (firmware frozen until after this presentation).
+  timer interrupt removes that (software frozen until after this presentation).
 
 ### Likely questions
 | Question | Answer |
@@ -582,7 +583,7 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 ### Likely questions
 | Question | Answer |
 |---|---|
-| Why is the laser peak smaller than the firmware's? | They measure different things: 0.90° is the controller's error against its reference during the transient; 0.3° is the table's heading change read by eye on the wall as the dot moved. Both are under 1°. |
+| Why is the laser peak smaller than the software's? | They measure different things: 0.90° is the controller's error against its reference during the transient; 0.3° is the table's heading change read by eye on the wall as the dot moved. Both are under 1°. |
 | What if it failed mid-slew? | Simulated: detected and recovered in all 9 cases including mid-slew (backup). |
 
 ---
@@ -607,8 +608,8 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 ### Likely questions
 | Question | Answer |
 |---|---|
-| Which failure worries you most for a live demo? | Connectors: wheel D's lead and the motor switch cost us the most table time. The checklist (slide 21) covers them, and the firmware catches a real wheel failure. |
-| Why not fix the wheel-loop pauses now? | It means moving the wheel loop to a timer interrupt, which touches the most code. We froze the firmware before the presentation rather than risk a working build. |
+| Which failure worries you most for a live demo? | Connectors: wheel D's lead and the motor switch cost us the most table time. The checklist (slide 21) covers them, and the software catches a real wheel failure. |
+| Why not fix the wheel-loop pauses now? | It means moving the wheel loop to a timer interrupt, which touches the most code. We froze the software before the presentation rather than risk a working build. |
 
 ---
 
@@ -663,14 +664,14 @@ on the ground. Here is how we built it, how we verified it, and what we learned.
 |---|---|
 | Why would MPC beat the PD? | The PD knows nothing about limits; it can demand torque the wheels can't give. MPC plans with the limits and can trade error for momentum, which matters on a table that fills its wheels. |
 | Can the Teensy run it? | TinyMPC targets much smaller microcontrollers; the Teensy's 600 MHz Cortex-M7 with an FPU has margin, but solve time per step is one of the things the plan measures. |
-| How would the balancer estimate the CG? | The wheels' momentum change while holding a tilt is the gravity torque (no other x/y torque on the bearing); torque ÷ (m g) gives the CG offset vector. Our SLEW TILT firmware already maps the rest tilt over a full turn and drains wheel momentum with gravity, the same physics. |
+| How would the balancer estimate the CG? | The wheels' momentum change while holding a tilt is the gravity torque (no other x/y torque on the bearing); torque ÷ (m g) gives the CG offset vector. Our SLEW TILT software already maps the rest tilt over a full turn and drains wheel momentum with gravity, the same physics. |
 
 ---
 
 ## Slide 23: GenAI Use Documentation
 State plainly what the tool did and what the team did.
 - **Tool:** Claude Code (Opus model).
-- **Firmware:** drafted the estimator and magnetometer aid, controller, allocation, fault detector, IMU driver, logger,
+- **Software:** drafted the estimator and magnetometer aid, controller, allocation, fault detector, IMU driver, logger,
   command set, the self-grading tests and DEMO ALL, from the team's requirements and design decisions; the team
   reviewed, uploaded and tested every build.
 - **Simulation and analysis:** truth models, log replay and balance tools, plots; traced the heading leak and the
@@ -713,7 +714,7 @@ results can be replayed and checked.
 | Question | Answer |
 |---|---|
 | What would you do differently from day one? | Set up the laser truth first, and keep the SD card off the control loop. Both would have saved days. |
-| What is your biggest remaining risk for a live demo? | Connectors (wheel D's encoder lead, the motor-switch leads) and forgetting the warm-up. The checklist covers both; the firmware catches a real wheel failure if one happens. |
+| What is your biggest remaining risk for a live demo? | Connectors (wheel D's encoder lead, the motor-switch leads) and forgetting the warm-up. The checklist covers both; the software catches a real wheel failure if one happens. |
 | Did you meet "all 3 axes" for Req. 2 during motion? | Heading by laser during motion; roll and pitch by the accelerometer (exact at rest, gated when accelerating). An independent 3-axis truth during motion is future work. |
 | Why trust a 60 s hold for requirement 1? | The requirement asks for 1 minute; we also showed 5 minutes by laser within 0.25°. Beyond ~5 minutes the wheels fill from yaw drag, a physics limit without momentum dumping. |
 | What is the yaw drag? | A small torque from the air flow in the bearing, about 0.1 mN·m; the wheels absorb it. Real satellites dump momentum with magnetorquers or thrusters. |

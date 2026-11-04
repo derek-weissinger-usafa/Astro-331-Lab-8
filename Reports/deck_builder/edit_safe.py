@@ -20,6 +20,8 @@ stats = dict(merged=0, grouped=0, stretched=0, autofit=0, endpara=0)
 
 
 def set_autofit(bodyPr, kind='normAutofit'):
+    if bodyPr.find(qn('a:' + kind)) is not None:
+        return  # already set: keep it, with any font scale PowerPoint computed (2026-11-03)
     for tag in ('a:spAutoFit', 'a:normAutofit', 'a:noAutofit'):
         for e in bodyPr.findall(qn(tag)):
             bodyPr.remove(e)

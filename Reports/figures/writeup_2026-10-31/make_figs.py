@@ -221,7 +221,7 @@ def f5():
     fig, ax = plt.subplots(1, 2, figsize=(11, 3.8), gridspec_kw={'width_ratios': [1.6, 1]})
     base = ref[0]
     ax[0].plot(d['t'][s:e] - t0, ref - base, 'k--', lw=0.8, label='commanded')
-    ax[0].plot(d['t'][s:e] - t0, yl - base, color='#2f6fb0', label='firmware estimate (aid on, no hard-iron correction)')
+    ax[0].plot(d['t'][s:e] - t0, yl - base, color='#2f6fb0', label='software estimate (aid on, no hard-iron correction)')
     ax[0].plot(tr[k] - t0, yg - base, color='#b8433a', label='gyro only (replay) ≈ true heading')
     ax[0].set_xlabel('s'); ax[0].set_ylabel('heading change (deg)')
     ax[0].legend(fontsize=7, loc='lower left')
@@ -422,7 +422,7 @@ def f11():
     ax[1].plot(c, s1, 's-', color='#2f6fb0', label=f'room correction, in-sample ({np.nanmax(s1)-np.nanmin(s1):.1f}° p-p)')
     ax[1].text(0.02, 0.04, 'cross-check (fit one direction, test the other): 3.5° and 5.3° p-p', transform=ax[1].transAxes, fontsize=7)
     ax[1].set_xlabel('field direction in the body frame (deg)'); ax[1].legend(fontsize=7)
-    ax[1].set_title('Presentation spot, wheels spinning ±100 rpm\n(firmware hard iron + wheel model, 0.5 s smoothing)')
+    ax[1].set_title('Presentation spot, wheels spinning ±100 rpm\n(software hard iron + wheel model, 0.5 s smoothing)')
     save(fig, 'f11_room_distortion.png')
 
 
