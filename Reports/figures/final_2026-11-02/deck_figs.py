@@ -22,7 +22,8 @@ COL = {'A': '#0b5ed7', 'B': '#f08a00', 'C': '#0a9a3c', 'D': '#d7191c'}
 INK, RED, GREEN, BLUE, GREY, ORANGE = '#111111', '#d7191c', '#0a9a3c', '#0b5ed7', '#555555', '#f08a00'
 DRED, DGREEN, DBLUE, DORANGE = '#b30000', '#007a2c', '#0047b3', '#b35900'   # text on light fills
 BAND = '#c6efd2'                                           # +-1 deg requirement band
-PART = ('#cfe2ff', '#c9f0d2', '#ffdcb5')                   # DEMO ALL parts 1-3
+PART = ('#cfe2ff', '#c9f0d2', '#e3d6ff')                   # DEMO ALL parts 1-3 (3 lavender: wheel B is orange)
+DPURPLE = '#5a2ca0'                                        # text on the part-3 fill
 plt.rcParams.update({'font.size': 13, 'axes.titlesize': 13, 'axes.labelsize': 13, 'legend.fontsize': 11.5,
                      'xtick.labelsize': 12, 'ytick.labelsize': 12, 'axes.grid': True, 'grid.alpha': 0.35,
                      'figure.dpi': 150, 'axes.edgecolor': '#222', 'axes.linewidth': 1.0, 'legend.framealpha': 0.95,
@@ -420,7 +421,7 @@ def demo_all():
     for c, lab, colr in [('err_roll_deg', 'roll', BLUE), ('err_pitch_deg', 'pitch', RED), ('err_yaw_deg', 'yaw', INK)]:
         ax[0].plot(tt, s[c][m], color=colr, lw=2.0, label=lab)
     ax[0].set_ylim(-1.25, 1.25); ax[0].set_ylabel('attitude error\n(deg)')
-    ax[0].text(12, -0.95, '±1° requirement', fontsize=11, color=DORANGE, fontweight='bold')
+    ax[0].text(12, -0.95, '±1° requirement', fontsize=11, color=DPURPLE, fontweight='bold')
     ax[0].legend(loc='lower right', ncol=3, fontsize=10)
     for w in 'ABCD':
         ax[1].plot(tt, s[f'motor_{w.lower()}_measured_rate_rpm'][m] * RPM, color=COL[w], lw=2.0, label=f'wheel {w}')

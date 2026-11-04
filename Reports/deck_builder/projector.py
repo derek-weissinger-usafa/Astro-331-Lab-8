@@ -107,7 +107,10 @@ def replace_picture(slide, pic, data, box):
     rid = old.blipFill.blip.rEmbed
     old.addprevious(new._element)
     old.getparent().remove(old)
-    slide.part.drop_rel(rid)
+    # An identical image is de-duplicated onto the same relationship, so drop it only if nothing uses it now
+    # (python-pptx's drop_rel also drops a relationship that is still referenced once).
+    if not slide._element.xpath(f'.//*[@r:embed="{rid}" or @r:link="{rid}" or @r:id="{rid}"]'):
+        slide.part._rels.pop(rid)
 
 
 def fit(data, slot):
